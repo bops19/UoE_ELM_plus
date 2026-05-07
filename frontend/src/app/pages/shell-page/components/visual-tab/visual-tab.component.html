@@ -1,0 +1,116 @@
+<section class="legacy-visual-shell" *ngIf="vm.isImageMediaMode()">
+  <div class="legacy-visual-main">
+    <div class="legacy-visual-actions" *ngIf="vm.selectedWorkspaceImage() as selected">
+      <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.regenerateSelectedWorkspaceImage()">
+        <i *ngIf="vm.imageActionPending() === 'regenerate' && vm.imageActionBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+        {{ vm.imageActionPending() === 'regenerate' && vm.imageActionBusy() ? 'Regenerating...' : 'Regenerate' }}
+      </button>
+      <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.refineSelectedWorkspaceImage()">
+        <i *ngIf="vm.imageActionPending() === 'refine' && vm.imageActionBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+        {{ vm.imageActionPending() === 'refine' && vm.imageActionBusy() ? 'Refining...' : 'Refine' }}
+      </button>
+      <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.refineSelectedWorkspaceImage()">Use as base for edit</button>
+      <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.downloadSelectedWorkspaceImage()">Download</button>
+      <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.createVariationFromSelectedImage()">
+        <i *ngIf="vm.imageActionPending() === 'variation' && vm.imageActionBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+        {{ vm.imageActionPending() === 'variation' && vm.imageActionBusy() ? 'Creating variation...' : 'Variation' }}
+      </button>
+    </div>
+
+    <div class="legacy-visual-preview-stack">
+      <div class="legacy-visual-canvas" *ngIf="vm.selectedWorkspaceImage() as selected; else noVisualImage" [style.aspect-ratio]="vm.visualCanvasAspectRatio(selected)">
+        <div class="visual-project-menu-wrap">
+          <button
+            type="button"
+            class="btn btn--sm btn--secondary visual-project-menu-trigger"
+            [disabled]="vm.imageControlDisabled()"
+            (click)="toggleProjectMenu($event)"
+            aria-label="Project options"
+            title="Project options"
+          >
+            ⋯
+          </button>
+          <div class="visual-project-menu" *ngIf="projectMenuOpen" (click)="$event.stopPropagation()">
+            <button type="button" class="btn btn--sm btn--secondary visual-project-menu-item" [disabled]="vm.imageControlDisabled()" (click)="toggleProjectPicker($event)">
+              Add to project
+            </button>
+            <div class="visual-project-picker" *ngIf="projectPickerOpen">
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary visual-project-picker-item"
+                *ngFor="let project of vm.imageProjects()"
+                [disabled]="vm.imageControlDisabled()"
+                (click)="assignToProject(project.id, $event)"
+              >
+                {{ project.name }}
+              </button>
+              <div class="visual-project-picker-empty" *ngIf="vm.imageProjects().length === 0">No projects yet.</div>
+            </div>
+            <button type="button" class="btn btn--sm btn--secondary visual-project-menu-item" [disabled]="vm.imageControlDisabled()" (click)="addToNewProject($event)">
+              Add to new project
+            </button>
+          </div>
+        </div>
+        <img [src]="'data:' + selected.mime + ';base64,' + selected.b64" [alt]="selected.prompt || 'Generated image'" decoding="async" />
+      </div>
+      <div class="legacy-visual-meta" *ngIf="vm.selectedWorkspaceImage() as selected">
+        <span><strong>Generated</strong> {{ (selected.generatedAt || selected.createdAt) ? ((selected.generatedAt || selected.createdAt) | date: 'medium') : '—' }}</span>
+        <span><strong>Size</strong> {{ selected.size || '—' }}</span>
+        <span *ngIf="selected.favorite"><strong>Saved</strong> Favorite</span>
+        <span *ngIf="selected.projectId"><strong>Project</strong> {{ selected.projectId }}</span>
+      </div>
+      <div class="prompt-history" *ngIf="vm.imagePromptHistoryItems().length > 0">
+        <div class="prompt-history-header">Prompt history ({{ vm.imagePromptHistoryItems().length }})</div>
+        <div class="prompt-history-list">
+          <div class="prompt-history-item" *ngFor="let item of vm.imagePromptHistoryItems()">
+            <div class="prompt-history-meta">
+              <span>{{ item.createdAt ? (item.createdAt | date: 'short') : 'Unknown time' }}</span>
+              <span *ngIf="item.favorite">★</span>
+            </div>
+            <div class="prompt-history-text">{{ item.prompt }}</div>
+            <div class="prompt-history-actions">
+              <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.copyImagePromptHistoryPrompt(item)">Copy</button>
+              <button type="button" class="btn btn--sm btn--secondary legacy-feature-btn" [disabled]="vm.imageControlDisabled()" (click)="vm.loadImagePromptHistory(item)">Load</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ng-template #noVisualImage>
+        <div class="legacy-visual-empty">
+          <span *ngIf="vm.sending()">Generating image...</span>
+          <span *ngIf="!vm.sending()">No generated images in this session yet.</span>
+        </div>
+      </ng-template>
+    </div>
+  </div>
+
+  <aside class="legacy-visual-gallery">
+    <div class="legacy-visual-gallery-header">
+      <span>Session gallery</span>
+      <span>{{ vm.imageWorkspaceItems().length }}</span>
+    </div>
+    <div class="legacy-visual-gallery-list" *ngIf="vm.imageWorkspaceItems().length > 0">
+      <div class="legacy-visual-thumb" *ngFor="let image of vm.imageWorkspaceItems()">
+        <button type="button" class="legacy-thumb-select" (click)="vm.selectWorkspaceImage(image)">
+          <img [src]="'data:' + image.mime + ';base64,' + image.b64" [alt]="image.prompt || 'Image'" loading="lazy" decoding="async" />
+        </button>
+        <button
+          type="button"
+          class="legacy-thumb-favorite"
+          (click)="vm.toggleWorkspaceImageFavorite(image, $event)"
+          [attr.aria-label]="image.favorite ? 'Unfavorite image' : 'Favorite image'"
+          [title]="image.favorite ? 'Unfavorite' : 'Favorite'"
+        >
+          {{ image.favorite ? '★' : '☆' }}
+        </button>
+      </div>
+    </div>
+    <div class="legacy-visual-gallery-empty" *ngIf="vm.imageWorkspaceItems().length === 0">Thumbnails appear here after generation.</div>
+  </aside>
+</section>
+
+<section class="legacy-visual-video-empty" *ngIf="vm.isVisualMediaTab() && vm.isVideoMediaMode()">
+  <div class="legacy-video-pill">Placeholder mode</div>
+  <h3>Video generation is moving in here</h3>
+  <p>Visual media owns video sessions and model selection. Rendering, uploads, playback, and job tracking come next.</p>
+</section>

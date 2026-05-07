@@ -1,0 +1,1060 @@
+<main
+  #shellRoot
+  class="chat-root"
+  [class.swap-lr]="shouldSwapUserAssistantOrientation()"
+  [class.window-frozen]="requestPending()"
+  [attr.aria-busy]="requestPending()"
+>
+  <header class="tabs-shell">
+    <div class="tabs-brand">
+      <table class="brand-table" role="presentation" aria-hidden="true">
+        <tr>
+          <td class="brand-col brand-col-logo">
+            <img src="/assets/UoE.png" alt="UoE logo" class="brand-logo-image" decoding="async" fetchpriority="high" />
+          </td>
+          <td class="brand-col brand-col-text">
+            <span class="logo-text">ELM+</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <nav id="tab-bar" role="tablist" aria-label="Use case tabs">
+      <button
+        type="button"
+        class="use-tab"
+        *ngFor="let useCase of useCases()"
+        [class.use-tab-active]="isUseCaseActive(useCase)"
+        [attr.aria-selected]="isUseCaseActive(useCase)"
+        [disabled]="requestPending()"
+        (click)="navigateUseCase(useCase, $event)"
+      >
+        {{ useCaseLabel(useCase) }}
+      </button>
+      <span class="tab-bar-lock-spacer" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="btn btn--sm btn--secondary tab-bar-lock-btn"
+        (click)="toggleLayoutLock($event)"
+        [attr.aria-label]="layoutLockLabel()"
+        [title]="layoutLockLabel()"
+      >
+        <i class="bi" [class.bi-lock-fill]="layoutLocked()" [class.bi-unlock-fill]="!layoutLocked()"></i>
+      </button>
+    </nav>
+  </header>
+
+  <section class="status loading" *ngIf="loading()" role="status" aria-live="polite" aria-busy="true">Loading sessions and catalog...</section>
+  <section class="status error" *ngIf="!loading() && error()" role="alert" aria-live="assertive">{{ error() }}</section>
+
+  <section
+    class="workspace"
+    *ngIf="!loading()"
+    aria-labelledby="workspace-heading"
+    [class.left-all-collapsed]="sidebarCollapsed()"
+    [class.right-collapsed]="usagePanelCollapsed()"
+    cdkDropList
+    [cdkDropListDisabled]="layoutLocked()"
+    cdkDropListOrientation="horizontal"
+    [cdkDropListData]="workspaceLanes()"
+    (cdkDropListDropped)="onWorkspaceLaneDrop($event)"
+  >
+    <h1 id="workspace-heading" class="visually-hidden-heading">Assistant workspace</h1>
+    <section
+      class="workspace-lane workspace-lane-left"
+      cdkDrag
+      [cdkDragDisabled]="layoutLocked()"
+      cdkDragLockAxis="x"
+      aria-labelledby="shell-sidebar-heading"
+      [style.order]="workspaceLaneOrder('left')"
+    >
+    <h2 id="shell-sidebar-heading" class="visually-hidden-heading">Sidebar panels</h2>
+    <aside class="sidebar" *ngIf="!sidebarCollapsed()">
+      <div
+        class="sidebar-drop-list"
+        cdkDropList
+        [cdkDropListDisabled]="layoutLocked()"
+        cdkDropListOrientation="vertical"
+        [cdkDropListData]="sidebarSections()"
+        (cdkDropListDropped)="onSidebarSectionDrop($event)"
+      >
+        <ng-container *ngFor="let section of sidebarSections(); let i = index">
+          <section
+            class="sidebar-files"
+            *ngIf="section === 'files'"
+            cdkDrag
+            [cdkDragDisabled]="layoutLocked()"
+            cdkDragLockAxis="y"
+            cdkDragBoundary=".sidebar-drop-list"
+            aria-labelledby="sidebar-files-title"
+            [class.collapsed]="filesPanelCollapsed()"
+            [style.flex-basis.%]="!filesPanelCollapsed() ? sidebarSectionBasisPct('files') : null"
+            [style.height.%]="!filesPanelCollapsed() ? sidebarSectionBasisPct('files') : null"
+          >
+            <div class="files-header" cdkDragHandle>
+              <span id="sidebar-files-title" class="files-title">Files</span>
+              <div class="panel-actions-inline">
+                <button
+                  type="button"
+                  class="btn btn--sm btn--secondary panel-collapse-btn"
+                  (click)="toggleSidebarCollapsed($event)"
+                  [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Minimize sidebar'"
+                  [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Minimize sidebar'"
+                >
+                  <i class="bi" [class.bi-layout-sidebar-inset]="!sidebarCollapsed()" [class.bi-layout-sidebar]="sidebarCollapsed()"></i>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--sm btn--secondary panel-collapse-btn"
+                  (click)="toggleFilesPanel($event)"
+                  [attr.aria-label]="filesPanelCollapsed() ? 'Expand files' : 'Collapse files'"
+                  [title]="filesPanelCollapsed() ? 'Expand files' : 'Collapse files'"
+                >
+                  <i class="bi" [class.bi-chevron-down]="!filesPanelCollapsed()" [class.bi-chevron-right]="filesPanelCollapsed()"></i>
+                </button>
+                <input #fileInput type="file" multiple class="hidden-file-input" (change)="onFilesSelected($event)" />
+                <button type="button" class="file-add-btn" (click)="triggerUpload(fileInput)" [disabled]="uploadingFiles() || filesPanelCollapsed()" aria-label="Add files" title="Add files">
+                  +
+                </button>
+              </div>
+            </div>
+            <div class="status loading" *ngIf="uploadingFiles() && !filesPanelCollapsed()" role="status" aria-live="polite" aria-busy="true">
+              Uploading file attachments...
+            </div>
+
+            <div class="attachments-panel" *ngIf="!filesPanelCollapsed() && attachments().length > 0">
+              <div class="attachment-list">
+                <div class="attachment-item" *ngFor="let attachment of attachments()">
+                  <div class="attachment-row">
+                    <input
+                      type="checkbox"
+                      class="attachment-check"
+                      [checked]="attachment.active"
+                      [disabled]="!attachment.usable || isAttachmentBusy(attachment.id) || interactionLocked()"
+                      [title]="attachment.toggleTitle"
+                      (change)="toggleAttachment(attachment, $event)"
+                    />
+                    <i class="bi file-icon" [ngClass]="fileIcon(attachment.mimeType, attachment.name)"></i>
+                    <div class="attachment-name">{{ attachment.name }}</div>
+                    <button
+                      type="button"
+                      class="attachment-remove"
+                      [disabled]="isAttachmentBusy(attachment.id) || interactionLocked()"
+                      [title]="isAttachmentBusy(attachment.id) ? 'Removing...' : 'Remove file'"
+                      aria-label="Remove file"
+                      (click)="removeAttachment(attachment, $event)"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            class="sidebar-history"
+            *ngIf="section === 'history'"
+            cdkDrag
+            [cdkDragDisabled]="layoutLocked()"
+            cdkDragLockAxis="y"
+            cdkDragBoundary=".sidebar-drop-list"
+            aria-labelledby="sidebar-history-title"
+            [class.collapsed]="historyPanelCollapsed()"
+            [style.flex-basis.%]="!historyPanelCollapsed() ? sidebarSectionBasisPct('history') : null"
+            [style.height.%]="!historyPanelCollapsed() ? sidebarSectionBasisPct('history') : null"
+          >
+            <div class="chat-history-title" cdkDragHandle>
+              <span id="sidebar-history-title">chat</span>
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary panel-collapse-btn"
+                (click)="startNewSession()"
+                [disabled]="interactionLocked()"
+                aria-label="Start new chat"
+                title="Start new chat"
+              >
+                <i class="bi bi-plus-lg"></i>
+              </button>
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary panel-collapse-btn"
+                (click)="openArchivedChatsModal($event)"
+                aria-label="Show archived chats"
+                title="Show archived chats"
+              >
+                <i class="bi bi-archive"></i>
+              </button>
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary panel-collapse-btn"
+                (click)="toggleSidebarCollapsed($event)"
+                [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Minimize sidebar'"
+                [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Minimize sidebar'"
+              >
+                <i class="bi" [class.bi-layout-sidebar-inset]="!sidebarCollapsed()" [class.bi-layout-sidebar]="sidebarCollapsed()"></i>
+              </button>
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary panel-collapse-btn"
+                (click)="toggleHistoryPanel($event)"
+                [attr.aria-label]="historyPanelCollapsed() ? 'Expand chat history' : 'Collapse chat history'"
+                [title]="historyPanelCollapsed() ? 'Expand chat history' : 'Collapse chat history'"
+              >
+                <i class="bi" [class.bi-chevron-down]="!historyPanelCollapsed()" [class.bi-chevron-right]="historyPanelCollapsed()"></i>
+              </button>
+            </div>
+            <div class="session-list" *ngIf="!historyPanelCollapsed() && visibleSessions().length > 0">
+              <div
+                class="session-item"
+                [class.active]="selectedSessionId() === session.id"
+                [class.archived]="!!session.archivedAt"
+                [class.menu-open]="isSessionMenuOpen(session.id)"
+                *ngFor="let session of visibleSessions()"
+                (click)="loadSession(session.id)"
+              >
+                <div class="session-header">
+                  <div class="session-title" *ngIf="renamingSessionId() !== session.id">{{ session.title || 'Untitled chat' }}</div>
+                  <div class="rename-row" *ngIf="renamingSessionId() === session.id">
+                    <input
+                      [ngModel]="renameDraft()"
+                      (ngModelChange)="renameDraft.set($event)"
+                      (click)="$event.stopPropagation()"
+                      (keydown.enter)="commitRename(session, $event)"
+                    />
+                    <button type="button" class="btn btn--sm btn--primary" (click)="commitRename(session, $event)">Save</button>
+                    <button type="button" class="btn btn--sm btn--secondary" (click)="cancelRename($event)">Cancel</button>
+                  </div>
+                  <div class="session-actions">
+                    <button
+                      type="button"
+                      class="btn btn--sm btn--secondary session-menu-trigger"
+                      [disabled]="isSessionBusy(session) || interactionLocked()"
+                      (click)="toggleSessionMenu(session.id, $event)"
+                      aria-label="Session actions"
+                      title="Session actions"
+                    >
+                      ⋯
+                    </button>
+                    <div class="session-menu" *ngIf="isSessionMenuOpen(session.id)" (click)="$event.stopPropagation()">
+                      <button type="button" class="btn btn--sm btn--secondary" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="beginRename(session, $event)">Rename</button>
+                      <button type="button" class="btn btn--sm btn--secondary" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="toggleSessionArchive(session, $event)">
+                        {{ session.archivedAt ? 'Unarchive' : 'Archive' }}
+                      </button>
+                      <button type="button" class="btn btn--sm btn--danger" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="deleteSessionItem(session, $event)">Delete</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="session-meta">{{ session.messageCount }} msgs</div>
+              </div>
+            </div>
+            <div class="session-empty" *ngIf="!historyPanelCollapsed() && visibleSessions().length === 0">No sessions yet.</div>
+          </section>
+
+          <div
+            class="sidebar-splitter"
+            *ngIf="i < sidebarSections().length - 1 && !filesPanelCollapsed() && !historyPanelCollapsed()"
+            title="Resize Files and Chat history"
+            role="separator"
+            aria-orientation="horizontal"
+            [attr.aria-valuenow]="sidebarResizeAriaValueNow()"
+            aria-valuemin="20"
+            aria-valuemax="80"
+            tabindex="0"
+            (keydown)="onSidebarResizeKey($event)"
+            (mousedown)="startSidebarResize($event)"
+          >
+            <span class="sidebar-splitter-grip"></span>
+          </div>
+        </ng-container>
+      </div>
+    </aside>
+    <div class="left-panel-reopen" *ngIf="sidebarCollapsed()">
+      <button
+        type="button"
+        class="left-panel-reopen-btn"
+        (click)="toggleSidebarCollapsed($event)"
+        aria-label="Expand sidebar"
+        title="Expand sidebar"
+      >
+        <span>Files/Chats</span>
+      </button>
+    </div>
+    </section>
+
+    <section
+      class="workspace-lane workspace-lane-center"
+      cdkDrag
+      [cdkDragDisabled]="layoutLocked()"
+      cdkDragLockAxis="x"
+      aria-labelledby="shell-chat-pane-heading"
+      [style.order]="workspaceLaneOrder('center')"
+    >
+    <section class="chat-pane" aria-labelledby="shell-chat-pane-heading">
+      <h2 id="shell-chat-pane-heading" class="visually-hidden-heading">Conversation panel</h2>
+      <div class="controls">
+        <label>
+          Tier
+          <select [ngModel]="selectedTier()" (ngModelChange)="onTierChange($event)">
+            <option *ngFor="let tier of tiers()" [value]="tier">{{ tierLabel(tier) }}</option>
+          </select>
+        </label>
+        <label *ngIf="showThinkingControl()">
+          Thinking
+          <select [ngModel]="selectedThinkingLevel()" (ngModelChange)="onThinkingChange($event)">
+            <option *ngFor="let level of thinkingLevelsForModel()" [value]="level.key">{{ level.label }}</option>
+          </select>
+        </label>
+        <label>
+          Model
+          <select [ngModel]="selectedModel()" (ngModelChange)="onModelChange($event)">
+            <option *ngFor="let model of modelsForUseCase()" [value]="model">{{ model }}</option>
+          </select>
+        </label>
+        <label *ngIf="isVisualMediaTab() && isImageMediaMode()">
+          Style
+          <select [ngModel]="imageStyle()" (ngModelChange)="imageStyle.set($event)">
+            <option value="photorealistic">photorealistic</option>
+            <option value="illustration">illustration</option>
+            <option value="3d_render">3d_render</option>
+            <option value="poster">poster</option>
+            <option value="minimal">minimal</option>
+          </select>
+        </label>
+        <label *ngIf="isVisualMediaTab() && isImageMediaMode()">
+          Size
+          <select [ngModel]="imageSize()" (ngModelChange)="imageSize.set($event)">
+            <option value="square">square</option>
+            <option value="portrait">portrait</option>
+            <option value="landscape">landscape</option>
+          </select>
+        </label>
+        <label *ngIf="isVisualMediaTab() && isImageMediaMode()">
+          Count
+          <select [ngModel]="imageCount()" (ngModelChange)="onImageCountChange(+$event)">
+            <option [value]="1">1</option>
+            <option [value]="2">2</option>
+            <option [value]="4">4</option>
+          </select>
+        </label>
+        <label *ngIf="showPromptControl()">
+          Prompt
+          <select [ngModel]="promptDropdownValue()" [disabled]="requestPending() || promptPresetSaving()" (ngModelChange)="onPromptPresetChange($event)">
+            <option value="">No prompt</option>
+            <option *ngFor="let preset of promptPresets()" [value]="preset.id">{{ preset.name }}</option>
+            <option value="__create_prompt_preset__">+ Create new prompt...</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          class="btn btn--sm btn--primary control-edit-prompt-btn"
+          *ngIf="showPromptControl()"
+          [disabled]="!hasSelectedPromptPreset() || interactionLocked() || promptPresetSaving() || requestPending()"
+          (click)="openEditPromptPresetModal($event)"
+          title="Edit selected prompt"
+        >
+          Edit prompt
+        </button>
+      </div>
+      <div class="voice-subtabs-row" *ngIf="selectedUseCase() === 'voice'">
+        <div class="voice-subtabs">
+          <button type="button" class="btn btn--sm btn--secondary" [class.use-tab-active]="isVoiceModeActive('realtime')" [disabled]="requestPending()" (click)="navigateVoiceMode('realtime', $event)">
+            Realtime
+          </button>
+          <button type="button" class="btn btn--sm btn--secondary" [class.use-tab-active]="isVoiceModeActive('turn')" [disabled]="requestPending()" (click)="navigateVoiceMode('turn', $event)">
+            Turn-based
+          </button>
+          <button type="button" class="btn btn--sm btn--secondary" [class.use-tab-active]="isVoiceModeActive('transcribe')" [disabled]="requestPending()" (click)="navigateVoiceMode('transcribe', $event)">
+            Transcribe
+          </button>
+          <button type="button" class="btn btn--sm btn--secondary" [class.use-tab-active]="isVoiceModeActive('tts')" [disabled]="requestPending()" (click)="navigateVoiceMode('tts', $event)">
+            Speech
+          </button>
+        </div>
+      </div>
+      <div class="deep-tools-row" *ngIf="showDeepResearchToolControl()">
+        <div class="deep-tools-control">
+          <span class="control-label">Tools</span>
+          <div class="deep-tools-toggle" role="group" aria-label="Deep research tools" [title]="deepResearchToolHint()">
+            <button
+              type="button"
+              class="btn btn--sm btn--secondary deep-tool-btn"
+              [class.use-tab-active]="deepResearchTools().webSearch"
+              [class.deep-tool-btn-active]="deepResearchTools().webSearch"
+              (click)="toggleDeepResearchTool('webSearch', $event)"
+              [disabled]="deepResearchToolDisabled('webSearch')"
+            >
+              Web
+            </button>
+            <button
+              type="button"
+              class="btn btn--sm btn--secondary deep-tool-btn"
+              [class.use-tab-active]="deepResearchTools().codeInterpreter"
+              [class.deep-tool-btn-active]="deepResearchTools().codeInterpreter"
+              (click)="toggleDeepResearchTool('codeInterpreter', $event)"
+              [disabled]="deepResearchToolDisabled('codeInterpreter')"
+            >
+              Code
+            </button>
+            <span class="deep-tool-lock-wrap" [title]="deepResearchToolTitle('fileSearch')">
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary deep-tool-btn"
+                [class.use-tab-active]="deepResearchTools().fileSearch"
+                [class.deep-tool-btn-active]="deepResearchTools().fileSearch"
+                (click)="toggleDeepResearchTool('fileSearch', $event)"
+                [disabled]="deepResearchToolDisabled('fileSearch')"
+                [title]="deepResearchToolTitle('fileSearch')"
+              >
+                Files
+              </button>
+            </span>
+            <span class="deep-tool-lock-wrap" [title]="deepResearchToolTitle('mcp')">
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary deep-tool-btn"
+                [class.use-tab-active]="deepResearchTools().mcp"
+                [class.deep-tool-btn-active]="deepResearchTools().mcp"
+                (click)="toggleDeepResearchTool('mcp', $event)"
+                [disabled]="deepResearchToolDisabled('mcp')"
+                [title]="deepResearchToolTitle('mcp')"
+              >
+                MCP
+              </button>
+            </span>
+          </div>
+          <span class="deep-tools-hint" *ngIf="!deepResearchDataSourceSelected()">Pick Web, Files, or MCP</span>
+          <label class="deep-mcp-profile-field" *ngIf="showDeepResearchMcpProfileControl()">
+            <span class="control-label">MCP script</span>
+            <select
+              [ngModel]="deepResearchTools().mcpProfileId"
+              (ngModelChange)="onDeepResearchMcpProfileChange($event)"
+              [disabled]="deepResearchToolControlDisabled() || mcpProfilesLoading()"
+              [title]="deepResearchMcpProfileHint()"
+            >
+              <option value="">Select MCP profile...</option>
+              <option *ngFor="let profile of mcpProfiles()" [value]="profile.id">{{ profile.label }}</option>
+            </select>
+          </label>
+          <span class="deep-tools-hint" *ngIf="deepResearchTools().mcp && !mcpProfilesLoading() && mcpProfiles().length === 0">
+            No MCP scripts configured on backend
+          </span>
+          <span class="deep-tools-hint" *ngIf="mcpProfilesError()" role="alert" aria-live="assertive">{{ mcpProfilesError() }}</span>
+        </div>
+      </div>
+      <div class="computer-tools-row" *ngIf="isComputerTab()">
+        <div class="computer-tools-control">
+          <label>
+            Computer model
+            <input [ngModel]="computerModel()" (ngModelChange)="computerModel.set($event)" />
+          </label>
+          <label>
+            Start URL
+            <input [ngModel]="computerStartUrl()" (ngModelChange)="computerStartUrl.set($event)" placeholder="https://example.com" />
+          </label>
+          <label class="computer-prompt-field">
+            Agent prompt
+            <input [ngModel]="computerPrompt()" (ngModelChange)="computerPrompt.set($event)" placeholder="Computer task prompt" />
+          </label>
+          <button type="button" class="btn btn--sm btn--primary" (click)="startComputerRun()" [disabled]="interactionLocked() || !computerPrompt().trim()">Start run</button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="stepComputerRun()" [disabled]="!computerRun() || computerRun()?.status !== 'needs_action'">Step run</button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="closeComputerRun()" [disabled]="!computerRun()">Close run</button>
+          <span class="deep-tools-hint" *ngIf="toolsStatus()" role="status" aria-live="polite">{{ toolsStatus() }}</span>
+        </div>
+      </div>
+      <div class="embeddings-tools-row" *ngIf="isEmbeddingsTab()">
+        <div class="embeddings-tools-control">
+          <label>
+            Embed text
+            <input [ngModel]="embedTextInput()" (ngModelChange)="embedTextInput.set($event)" placeholder="Text for embedding" />
+          </label>
+          <button type="button" class="btn btn--sm btn--primary" (click)="runEmbedText()" [disabled]="interactionLocked() || !embedTextInput().trim() || embedTextBusy()">
+            <i *ngIf="embedTextBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+            {{ embedTextBusy() ? 'Embedding...' : 'Embed' }}
+          </button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="runEmbedIndex()" [disabled]="interactionLocked() || !selectedSessionId() || embedIndexBusy()">
+            <i *ngIf="embedIndexBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+            {{ embedIndexBusy() ? 'Indexing...' : 'Index files' }}
+          </button>
+          <label>
+            Search
+            <input [ngModel]="embedQueryInput()" (ngModelChange)="embedQueryInput.set($event)" placeholder="Semantic query" />
+          </label>
+          <label>
+            Top K
+            <input
+              type="number"
+              min="1"
+              max="20"
+              [ngModel]="embedTopK()"
+              (ngModelChange)="embedTopK.set(+$event || 8)"
+            />
+          </label>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="runEmbedSearch()" [disabled]="interactionLocked() || !selectedSessionId() || !embedQueryInput().trim() || embedSearchBusy()">
+            <i *ngIf="embedSearchBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+            {{ embedSearchBusy() ? 'Searching...' : 'Search index' }}
+          </button>
+          <span class="deep-tools-hint" *ngIf="toolsStatus()" role="status" aria-live="polite">{{ toolsStatus() }}</span>
+        </div>
+      </div>
+      <section class="chat-main-scroll" aria-labelledby="shell-messages-heading">
+        <h3 id="shell-messages-heading" class="visually-hidden-heading">Messages</h3>
+        <cdk-virtual-scroll-viewport
+          class="messages"
+          *ngIf="!loadingSession() && !isVisualMediaTab()"
+          #messagesContainer
+          [itemSize]="180"
+          [minBufferPx]="720"
+          [maxBufferPx]="1440"
+        >
+          <div class="message" *cdkVirtualFor="let message of messages(); trackBy: trackByMessageId" [class.user]="message.role === 'user'">
+            <ng-container *ngIf="message.role === 'assistant'; else userMessageBlock">
+              <div class="assistant-response-bubble">
+                <div class="assistant-header-bubble">
+                  <span class="assistant-header-actions" *ngIf="showResponseActions(message)">
+                    <button
+                      type="button"
+                      class="btn btn--sm btn--secondary icon-btn"
+                      (click)="toggleResponseCollapse(message, $event)"
+                      [attr.aria-label]="isResponseCollapsed(message) ? 'Expand response' : 'Collapse response'"
+                      [title]="isResponseCollapsed(message) ? 'Expand response' : 'Collapse response'"
+                    >
+                      {{ isResponseCollapsed(message) ? '▾' : '▴' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--sm btn--secondary icon-btn"
+                      (click)="copyAssistantMessage(message, $event)"
+                      [attr.aria-label]="isCopyFeedbackVisible(message) ? 'Copied' : 'Copy response'"
+                      [title]="isCopyFeedbackVisible(message) ? 'Copied' : 'Copy response'"
+                    >
+                      {{ isCopyFeedbackVisible(message) ? '✓' : '⧉' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--sm btn--secondary icon-btn"
+                      *ngIf="shouldShowReasoningPane(message)"
+                      (click)="toggleReasoningPane(message, $event)"
+                      [attr.aria-label]="isReasoningPaneCollapsed(message) ? 'Show reasoning pane' : 'Hide reasoning pane'"
+                      [title]="isReasoningPaneCollapsed(message) ? 'Show reasoning pane' : 'Hide reasoning pane'"
+                    >
+                      {{ isReasoningPaneCollapsed(message) ? '◫' : '◧' }}
+                    </button>
+                  </span>
+                  <span class="message-role-stats" *ngIf="message.usage || message.elapsedSec || messageCostDisplay(message) || thinkingTimerDisplay(message)">
+                    <span class="message-stat-chip message-stat-chip-thinking" *ngIf="thinkingTimerDisplay(message) as thinkingTimer">Thinking {{ thinkingTimer }}</span>
+                    <span class="message-stat-chip message-stat-chip-cost" *ngIf="messageCostDisplay(message)">Cost {{ messageCostDisplay(message) }}</span>
+                    <span class="message-stat-chip" *ngIf="message.elapsedSec || messageCostDisplay(message)">Time {{ messageElapsedDisplay(message) }}</span>
+                    <span class="message-stat-chip" *ngIf="messageUsageValue(message, 'output') !== null">{{ messageUsageValue(message, 'output')! | number }} out</span>
+                    <span class="message-stat-chip" *ngIf="messageUsageValue(message, 'input') !== null">{{ messageUsageValue(message, 'input')! | number }} in</span>
+                    <span class="message-stat-chip" *ngIf="messageUsageValue(message, 'reasoning') !== null">{{ messageUsageValue(message, 'reasoning')! | number }} reasoning</span>
+                  </span>
+                  <img src="/assets/saruman_pixel.png" alt="Assistant icon" class="message-role-icon assistant-right-icon" loading="lazy" decoding="async" />
+                </div>
+
+                <div class="assistant-response-pane" *ngIf="shouldShowReasoningPane(message)">
+                  <div class="assistant-response-main" *ngIf="!isResponseCollapsed(message)">
+                    <div class="assistant-response-header">Response</div>
+                    <div class="message-content assistant-response-content">
+                      {{ message.content || (shouldShowThinkingProgress(message) ? thinkingProgressLabel() : '') }}
+                    </div>
+                  </div>
+                  <div class="message-collapsed" *ngIf="isResponseCollapsed(message)">[collapsed]</div>
+                  <div
+                    class="assistant-reasoning-resize-handle"
+                    *ngIf="!isReasoningPaneCollapsed(message) && !isResponseCollapsed(message)"
+                    (mousedown)="startReasoningResize($event)"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize reasoning panel"
+                    [attr.aria-valuenow]="reasoningResizeAriaValueNow()"
+                    aria-valuemin="180"
+                    aria-valuemax="420"
+                    tabindex="0"
+                    (keydown)="onReasoningResizeKey($event)"
+                    title="Drag to resize reasoning panel"
+                  ></div>
+                  <div
+                    class="assistant-reasoning-pane"
+                    *ngIf="!isReasoningPaneCollapsed(message) && !isResponseCollapsed(message)"
+                    [style.flex-basis.px]="assistantReasoningWidthPx()"
+                  >
+                    <div class="assistant-reasoning-header">Reasoning</div>
+                    <pre class="assistant-reasoning-body">{{ reasoningSummaryText(message) }}</pre>
+                  </div>
+                </div>
+
+                <div class="assistant-response-main" *ngIf="!shouldShowReasoningPane(message) && !isTranscriptMessage(message)">
+                  <div class="assistant-response-header" *ngIf="!isResponseCollapsed(message)">Response</div>
+                  <div class="message-content assistant-response-content" *ngIf="!isResponseCollapsed(message)">
+                    {{ message.content || (shouldShowThinkingProgress(message) ? thinkingProgressLabel() : '') }}
+                  </div>
+                  <div class="message-collapsed" *ngIf="isResponseCollapsed(message)">[collapsed]</div>
+                </div>
+
+                <div class="assistant-response-main transcript-response-main" *ngIf="!shouldShowReasoningPane(message) && isTranscriptMessage(message)">
+                  <div class="assistant-response-header" *ngIf="!isResponseCollapsed(message)">Response</div>
+                  <div class="message-content assistant-response-content transcript-response-text" *ngIf="!isResponseCollapsed(message)">{{ message.content }}</div>
+                  <div class="message-collapsed" *ngIf="isResponseCollapsed(message)">[collapsed]</div>
+                  <div class="transcript-response-note" *ngIf="transcriptTimingNote(message)">
+                    {{ transcriptTimingNote(message) }}
+                  </div>
+                  <div class="transcript-segment-list" *ngIf="transcriptHasTimestamps(message)">
+                    <div class="transcript-segment-row" *ngFor="let segment of transcriptSegments(message)">
+                      <span class="transcript-segment-time">[{{ formatTranscriptTime(segment.startSec) }} - {{ formatTranscriptTime(segment.endSec) }}]</span>
+                      <span class="transcript-segment-text">{{ segment.text }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="message-actions" *ngIf="showResponseActions(message) && !isResponseCollapsed(message)">
+                  <button
+                    type="button"
+                    class="btn btn--sm btn--secondary icon-btn"
+                    *ngIf="showImageRetryAction(message)"
+                    [disabled]="imageControlDisabled()"
+                    (click)="retryImageGeneration(message, $event)"
+                    aria-label="Retry image"
+                    title="Retry image"
+                  >
+                    ↻
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--sm btn--secondary icon-btn assistant-bottom-collapse"
+                    (click)="toggleResponseCollapse(message, $event)"
+                    [attr.aria-label]="isResponseCollapsed(message) ? 'Expand response' : 'Collapse response'"
+                    [title]="isResponseCollapsed(message) ? 'Expand response' : 'Collapse response'"
+                  >
+                    {{ isResponseCollapsed(message) ? '▾' : '▴' }}
+                  </button>
+                  <div class="assistant-download-group" (click)="$event.stopPropagation()">
+                    <button
+                      type="button"
+                      class="btn btn--sm btn--secondary assistant-download-toggle icon-btn assistant-bottom-download"
+                      [disabled]="typeof message.id !== 'number'"
+                      (click)="toggleResponseDownloadMenu(message, $event)"
+                      aria-label="Download response"
+                      title="Download response"
+                    >
+                      ⤓
+                    </button>
+                    <div class="assistant-download-menu" *ngIf="isResponseDownloadMenuOpen(message)">
+                      <button type="button" class="assistant-download-item" (click)="downloadAssistantMessage(message, 'md', $event)">Markdown (.md)</button>
+                      <button type="button" class="assistant-download-item" (click)="downloadAssistantMessage(message, 'txt', $event)">Text (.txt)</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ng-container>
+
+            <ng-template #userMessageBlock>
+              <div class="user-inline-bubble">
+                <div class="user-message-content">
+                  <img src="/assets/shrek_donkey.png" alt="User icon" class="message-role-icon user-inside-icon" loading="lazy" decoding="async" />
+                  <pre class="message-content user-message-text">{{ message.content }}</pre>
+                </div>
+              </div>
+            </ng-template>
+          </div>
+        </cdk-virtual-scroll-viewport>
+        <div class="status loading" *ngIf="loadingSession()" role="status" aria-live="polite" aria-busy="true">Loading session...</div>
+
+        <ng-container *ngIf="isVisualMediaTab()">
+          @defer (on immediate) {
+            <app-shell-visual-tab></app-shell-visual-tab>
+          } @placeholder {
+            <section class="status loading" role="status" aria-live="polite" aria-busy="true">Loading visual workspace...</section>
+          }
+        </ng-container>
+        <pre class="raw-json embeddings-json-output" *ngIf="isEmbeddingsTab() && embedSearchResult()">{{ embedSearchResult() }}</pre>
+      </section>
+
+      <section class="query-row" aria-labelledby="shell-composer-heading">
+        <h3 id="shell-composer-heading" class="visually-hidden-heading">Message composer</h3>
+        <form class="composer composer-shell" *ngIf="showTextComposer()" (ngSubmit)="sendMessage()">
+          <div class="composer-input-wrap">
+            <img src="/assets/shrek_donkey.png" alt="User icon" class="composer-user-icon" decoding="async" />
+            <textarea
+              [ngModel]="messageInput()"
+              (ngModelChange)="onComposerInputChange($event)"
+              (keydown)="onComposerKeydown($event)"
+              name="message"
+              rows="4"
+              [placeholder]="composerPlaceholder()"
+            ></textarea>
+            <div class="composer-inline-moderation" *ngIf="isImageComposerMode() && isImageMediaMode()">
+              <span class="composer-image-controls-label">Moderation</span>
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary"
+                [class.use-tab-active]="imageModeration() === 'auto'"
+                (click)="imageModeration.set('auto')"
+              >
+                auto
+              </button>
+              <button
+                type="button"
+                class="btn btn--sm btn--secondary"
+                [class.use-tab-active]="imageModeration() === 'low'"
+                (click)="imageModeration.set('low')"
+              >
+                low
+              </button>
+            </div>
+            <div class="composer-inline-chat-controls" *ngIf="showComposerWebSearchToggle()">
+              <label class="composer-inline-checkbox" [title]="webSearchToggleHint()">
+                <input
+                  type="checkbox"
+                  [ngModel]="includeWebSearch()"
+                  (ngModelChange)="setIncludeWebSearch(!!$event)"
+                  [disabled]="webSearchToggleDisabled()"
+                  [ngModelOptions]="{ standalone: true }"
+                />
+                <span>Include web search</span>
+              </label>
+            </div>
+            <button
+              [type]="sending() ? 'button' : 'submit'"
+              class="composer-submit-inside"
+              [class.composer-submit-stop-feedback]="stopRequested()"
+              [disabled]="sending() ? false : !canSubmitComposer()"
+              (click)="sending() ? stopResponse($event) : null"
+              [attr.aria-live]="sending() ? 'polite' : null"
+            >
+              {{ composerPrimaryActionLabel() }}
+            </button>
+          </div>
+        </form>
+
+        <div class="voice-query-shell" *ngIf="!showTextComposer() && selectedUseCase() === 'voice'">
+          <div class="voice-query-mode" *ngIf="isVoiceModeActive('realtime')">
+            <div class="voice-query-left">
+              <button type="button" class="btn btn--sm btn--primary" (click)="connectRealtimeSession()" [disabled]="interactionLocked() || realtimeConnected()">Connect</button>
+              <button type="button" class="btn btn--sm btn--secondary" (click)="toggleRealtimeMute()" [disabled]="interactionLocked() || !realtimeConnected()">
+                {{ realtimeMuted() ? 'Unmute' : 'Mute' }}
+              </button>
+              <button type="button" class="btn btn--sm btn--secondary" (click)="endRealtimeSession()" [disabled]="interactionLocked() || !realtimeConnected()">End session</button>
+            </div>
+            <div class="voice-query-right">
+              <label>
+                Voice
+                <select [ngModel]="audioTurnVoice()" (ngModelChange)="audioTurnVoice.set($event)">
+                  <option *ngFor="let voice of assistantVoiceOptions()" [value]="voice">{{ voice }}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="voice-query-mode" *ngIf="isVoiceModeActive('turn')">
+            <input #audioTurnFile type="file" accept="audio/*" class="hidden-file-input" (change)="onAudioTurnFileSelected($event)" />
+            <div class="voice-query-left">
+              <button type="button" class="btn btn--sm btn--primary" (click)="startTurnRecording()" [disabled]="interactionLocked() || turnRecorderState() !== 'idle'">Record</button>
+              <button type="button" class="btn btn--sm btn--secondary" (click)="cancelTurnRecording()" [disabled]="interactionLocked() || turnRecorderState() === 'idle'">Cancel</button>
+              <button type="button" class="btn btn--sm btn--secondary" (click)="sendTurnRecording()" [disabled]="interactionLocked() || turnRecorderState() !== 'ready'">Send</button>
+            </div>
+            <div class="voice-query-right">
+              <label>
+                Voice
+                <select [ngModel]="audioTurnVoice()" (ngModelChange)="audioTurnVoice.set($event)">
+                  <option *ngFor="let voice of assistantVoiceOptions()" [value]="voice">{{ voice }}</option>
+                </select>
+              </label>
+              <label>
+                Audio model
+                <input [ngModel]="audioTurnModel()" (ngModelChange)="onAudioTurnModelChange($event)" />
+              </label>
+            </div>
+          </div>
+
+          <div class="voice-query-mode" *ngIf="isVoiceModeActive('transcribe')">
+            <input #transcriptionFile type="file" accept="audio/*" class="hidden-file-input" (change)="onTranscriptionFileSelected($event)" />
+            <div class="voice-query-left">
+              <button type="button" class="btn btn--sm btn--primary" (click)="toggleTranscribeRecording()" [disabled]="interactionLocked()">
+                {{ transcribeRecorderState() === 'recording' ? 'Stop' : 'Record' }}
+              </button>
+              <label>
+                Transcription model
+                <input [ngModel]="transcriptionModel()" (ngModelChange)="onTranscriptionModelChange($event)" />
+              </label>
+            </div>
+            <div class="voice-query-right">
+              <button type="button" class="btn btn--sm btn--secondary" (click)="transcriptionFile.click()" [disabled]="interactionLocked()">Upload audio</button>
+            </div>
+          </div>
+
+          <div class="voice-query-mode" *ngIf="isVoiceModeActive('tts')">
+            <div class="voice-query-left voice-query-left-wide">
+              <label class="voice-query-text-field">
+                <input [ngModel]="ttsText()" (ngModelChange)="ttsText.set($event)" placeholder="enter text to convert to speech" />
+              </label>
+              <button type="button" class="btn btn--sm btn--primary" (click)="runTts()" [disabled]="interactionLocked() || !ttsText().trim() || ttsBusy()">
+                <i *ngIf="ttsBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+                {{ ttsBusy() ? 'Generating speech...' : 'Generate speech' }}
+              </button>
+            </div>
+            <div class="voice-query-right">
+              <label>
+                Voice
+                <select [ngModel]="ttsVoice()" (ngModelChange)="ttsVoice.set($event)">
+                  <option *ngFor="let voice of ttsVoiceOptions()" [value]="voice">{{ voice }}</option>
+                </select>
+              </label>
+              <label>
+                TTS model
+                <input [ngModel]="ttsModel()" (ngModelChange)="onTtsModelChange($event)" />
+              </label>
+            </div>
+          </div>
+
+          <audio *ngIf="ttsAudioUrl() && isVoiceModeActive('tts')" [src]="ttsAudioUrl()" controls></audio>
+          <span class="deep-tools-hint" *ngIf="voiceStatus()" role="status" aria-live="polite">{{ voiceStatus() }}</span>
+        </div>
+
+        <div class="query-spacer" *ngIf="!showTextComposer() && selectedUseCase() !== 'voice'" aria-hidden="true"></div>
+      </section>
+    </section>
+    </section>
+
+    <section
+      class="workspace-lane workspace-lane-right"
+      cdkDrag
+      [cdkDragDisabled]="layoutLocked()"
+      cdkDragLockAxis="x"
+      aria-labelledby="shell-usage-pane-heading"
+      [style.order]="workspaceLaneOrder('right')"
+    >
+    <h2 id="shell-usage-pane-heading" class="visually-hidden-heading">Usage panel</h2>
+    <app-shell-usage-panel *ngIf="!usagePanelCollapsed()"></app-shell-usage-panel>
+    <div class="stats-panel-reopen" *ngIf="usagePanelCollapsed()">
+      <button
+        type="button"
+        class="stats-panel-reopen-btn"
+        (click)="toggleUsagePanel($event)"
+        aria-label="Expand usage panel"
+        title="Expand usage panel"
+      >
+        <span>Usage</span>
+      </button>
+    </div>
+    </section>
+
+    <div class="archived-chats-backdrop" *ngIf="showArchivedChatsModal()" (click)="closeArchivedChatsModal($event)">
+      <div class="archived-chats-modal" role="dialog" aria-modal="true" aria-label="Archived chats" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (click)="$event.stopPropagation()">
+        <div class="archived-chats-header">
+          <h3>Archived chats</h3>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="closeArchivedChatsModal($event)">Close</button>
+        </div>
+        <div class="archived-chats-list" *ngIf="archivedSessions().length > 0; else noArchivedChats">
+          <button
+            type="button"
+            class="archived-chat-item"
+            *ngFor="let session of archivedSessions()"
+            (click)="activateArchivedSession(session, $event)"
+            [disabled]="isSessionBusy(session) || interactionLocked()"
+          >
+            <span class="archived-chat-title">{{ session.title || 'Untitled chat' }}</span>
+            <span class="archived-chat-meta">{{ session.messageCount }} msgs</span>
+          </button>
+        </div>
+        <ng-template #noArchivedChats>
+          <div class="archived-chats-empty">No archived chats for this tab.</div>
+        </ng-template>
+      </div>
+    </div>
+  </section>
+
+  <section class="query-row" *ngIf="false && !loading()" aria-labelledby="shell-composer-fallback-heading">
+    <h3 id="shell-composer-fallback-heading" class="visually-hidden-heading">Fallback composer</h3>
+    <form class="composer composer-shell" *ngIf="showTextComposer()" (ngSubmit)="sendMessage()">
+      <div class="composer-input-wrap">
+        <img src="/assets/shrek_donkey.png" alt="User icon" class="composer-user-icon" decoding="async" />
+        <textarea
+          [ngModel]="messageInput()"
+          (ngModelChange)="onComposerInputChange($event)"
+          (keydown)="onComposerKeydown($event)"
+          name="message"
+          rows="4"
+          [placeholder]="composerPlaceholder()"
+        ></textarea>
+        <div class="composer-inline-moderation" *ngIf="isImageComposerMode() && isImageMediaMode()">
+          <span class="composer-image-controls-label">Moderation</span>
+          <button
+            type="button"
+            class="btn btn--sm btn--secondary"
+            [class.use-tab-active]="imageModeration() === 'auto'"
+            (click)="imageModeration.set('auto')"
+          >
+            auto
+          </button>
+          <button
+            type="button"
+            class="btn btn--sm btn--secondary"
+            [class.use-tab-active]="imageModeration() === 'low'"
+            (click)="imageModeration.set('low')"
+          >
+            low
+          </button>
+        </div>
+        <button
+          [type]="sending() ? 'button' : 'submit'"
+          class="composer-submit-inside"
+          [disabled]="sending() ? false : !canSubmitComposer()"
+          (click)="sending() ? stopResponse($event) : null"
+        >
+          {{ composerPrimaryActionLabel() }}
+        </button>
+      </div>
+    </form>
+
+    <div class="voice-query-shell" *ngIf="!showTextComposer() && selectedUseCase() === 'voice'">
+      <div class="voice-query-mode" *ngIf="isVoiceModeActive('realtime')">
+        <div class="voice-query-left">
+          <button type="button" class="btn btn--sm btn--primary" (click)="connectRealtimeSession()" [disabled]="interactionLocked() || realtimeConnected()">Connect</button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="toggleRealtimeMute()" [disabled]="interactionLocked() || !realtimeConnected()">
+            {{ realtimeMuted() ? 'Unmute' : 'Mute' }}
+          </button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="endRealtimeSession()" [disabled]="interactionLocked() || !realtimeConnected()">End session</button>
+        </div>
+        <div class="voice-query-right">
+          <label>
+            Voice
+            <input [ngModel]="audioTurnVoice()" (ngModelChange)="audioTurnVoice.set($event)" />
+          </label>
+        </div>
+      </div>
+
+      <div class="voice-query-mode" *ngIf="isVoiceModeActive('turn')">
+        <input #audioTurnFile type="file" accept="audio/*" class="hidden-file-input" (change)="onAudioTurnFileSelected($event)" />
+        <div class="voice-query-left">
+          <button type="button" class="btn btn--sm btn--primary" (click)="startTurnRecording()" [disabled]="interactionLocked() || turnRecorderState() !== 'idle'">Record</button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="cancelTurnRecording()" [disabled]="interactionLocked() || turnRecorderState() === 'idle'">Cancel</button>
+          <button type="button" class="btn btn--sm btn--secondary" (click)="sendTurnRecording()" [disabled]="interactionLocked() || turnRecorderState() !== 'ready'">Send</button>
+        </div>
+        <div class="voice-query-right">
+          <label>
+            Voice
+            <input [ngModel]="audioTurnVoice()" (ngModelChange)="audioTurnVoice.set($event)" />
+          </label>
+          <label>
+            Audio model
+            <input [ngModel]="audioTurnModel()" (ngModelChange)="onAudioTurnModelChange($event)" />
+          </label>
+        </div>
+      </div>
+
+      <div class="voice-query-mode" *ngIf="isVoiceModeActive('transcribe')">
+        <input #transcriptionFile type="file" accept="audio/*" class="hidden-file-input" (change)="onTranscriptionFileSelected($event)" />
+        <div class="voice-query-left">
+          <button type="button" class="btn btn--sm btn--primary" (click)="toggleTranscribeRecording()" [disabled]="interactionLocked()">
+            {{ transcribeRecorderState() === 'recording' ? 'Stop' : 'Record' }}
+          </button>
+          <label>
+            Transcription model
+            <input [ngModel]="transcriptionModel()" (ngModelChange)="onTranscriptionModelChange($event)" />
+          </label>
+        </div>
+        <div class="voice-query-right">
+          <button type="button" class="btn btn--sm btn--secondary" (click)="transcriptionFile.click()" [disabled]="interactionLocked()">Upload audio</button>
+        </div>
+      </div>
+
+      <div class="voice-query-mode" *ngIf="isVoiceModeActive('tts')">
+        <div class="voice-query-left voice-query-left-wide">
+          <label class="voice-query-text-field">
+            <input [ngModel]="ttsText()" (ngModelChange)="ttsText.set($event)" placeholder="enter text to convert to speech" />
+          </label>
+          <button type="button" class="btn btn--sm btn--primary" (click)="runTts()" [disabled]="interactionLocked() || !ttsText().trim() || ttsBusy()">
+            <i *ngIf="ttsBusy()" class="bi bi-arrow-repeat spinning" aria-hidden="true"></i>
+            {{ ttsBusy() ? 'Generating speech...' : 'Generate speech' }}
+          </button>
+        </div>
+        <div class="voice-query-right">
+          <label>
+            Voice
+            <input [ngModel]="ttsVoice()" (ngModelChange)="ttsVoice.set($event)" />
+          </label>
+          <label>
+            TTS model
+            <input [ngModel]="ttsModel()" (ngModelChange)="onTtsModelChange($event)" />
+          </label>
+        </div>
+      </div>
+
+      <audio *ngIf="ttsAudioUrl() && isVoiceModeActive('tts')" [src]="ttsAudioUrl()" controls></audio>
+      <span class="deep-tools-hint" *ngIf="voiceStatus()">{{ voiceStatus() }}</span>
+    </div>
+
+    <div class="query-spacer" *ngIf="!showTextComposer() && selectedUseCase() !== 'voice'" aria-hidden="true"></div>
+  </section>
+
+  <div class="prompt-preset-backdrop" *ngIf="showPromptPresetModal()" (click)="closePromptPresetModal($event)">
+    <div class="prompt-preset-modal" role="dialog" aria-modal="true" aria-label="Prompt editor" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (click)="$event.stopPropagation()">
+      <div class="prompt-preset-modal-header">
+        <div class="prompt-preset-modal-title">{{ promptModalTitle() }}</div>
+        <button type="button" class="prompt-preset-modal-close" (click)="closePromptPresetModal($event)" title="Close">x</button>
+      </div>
+      <div class="prompt-preset-modal-body">
+        <label class="session-setup-field session-setup-field-full">
+          <span class="session-setup-label">Prompt name</span>
+          <input
+            class="session-setup-input"
+            type="text"
+            maxlength="80"
+            placeholder="For example: Overleaf prompt"
+            [ngModel]="promptPresetFormName()"
+            (ngModelChange)="promptPresetFormName.set($event)"
+            [disabled]="promptPresetSaving()"
+          />
+        </label>
+        <label class="session-setup-field session-setup-field-full">
+          <span class="session-setup-label">Instructions</span>
+          <textarea
+            class="session-setup-textarea"
+            rows="4"
+            placeholder="Describe how the assistant should behave when this prompt is selected"
+            [ngModel]="promptPresetFormInstructions()"
+            (ngModelChange)="promptPresetFormInstructions.set($event)"
+            [disabled]="promptPresetSaving()"
+          ></textarea>
+        </label>
+        <label class="session-setup-field session-setup-field-full">
+          <span class="session-setup-label">Context</span>
+          <textarea
+            class="session-setup-textarea"
+            rows="3"
+            placeholder="Add reusable background context for this prompt"
+            [ngModel]="promptPresetFormContext()"
+            (ngModelChange)="promptPresetFormContext.set($event)"
+            [disabled]="promptPresetSaving()"
+          ></textarea>
+        </label>
+      </div>
+      <div class="prompt-preset-modal-actions">
+        <button type="button" class="btn btn--sm btn--danger" *ngIf="promptPresetFormId()" (click)="deletePromptPreset($event)" [disabled]="promptPresetSaving()">
+          Delete prompt
+        </button>
+        <button type="button" class="btn btn--sm btn--secondary" (click)="closePromptPresetModal($event)" [disabled]="promptPresetSaving()">
+          Cancel
+        </button>
+        <button type="button" class="btn btn--sm btn--primary" (click)="savePromptPreset($event)" [disabled]="!canSavePromptPresetForm()">
+          {{ promptPresetSaving() ? 'Saving...' : (promptPresetFormId() ? 'Update prompt' : 'Save prompt') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="prompt-preset-backdrop" *ngIf="showTextInputDialog()" (click)="closeTextInputDialog($event)">
+    <div cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (click)="$event.stopPropagation()">
+      <app-text-input-dialog
+        [title]="textInputDialogTitle()"
+        [placeholder]="textInputDialogPlaceholder()"
+        [confirmLabel]="textInputDialogConfirmLabel()"
+        [initialValue]="textInputDialogValue()"
+        (canceled)="closeTextInputDialog()"
+        (confirmed)="submitTextInputDialog($event)"
+      ></app-text-input-dialog>
+    </div>
+  </div>
+
+  <div class="developer-attribution" [attr.aria-label]="runtimeAttribution()">{{ runtimeAttribution() }}</div>
+</main>

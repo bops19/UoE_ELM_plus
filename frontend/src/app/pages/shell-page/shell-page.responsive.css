@@ -1,0 +1,88 @@
+@media (max-width: 980px) {
+  .workspace {
+    height: auto;
+    grid-template-columns: 1fr minmax(220px, 30%);
+  }
+
+  .sidebar {
+    grid-column: 1 / -1;
+    max-height: 35dvh;
+  }
+
+  .chat-pane {
+    grid-column: 1 / 2;
+  }
+
+  .pricing-pane {
+    grid-column: 2 / 3;
+  }
+
+  .assistant-response-pane {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .tabs-shell {
+    width: 96%;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: auto;
+  }
+
+  .sidebar,
+  .chat-pane,
+  app-shell-usage-panel {
+    grid-column: 1 / -1;
+    min-height: auto;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .pricing-panel {
+    position: static;
+  }
+
+  .sidebar-files,
+  .sidebar-history {
+    flex: 0 0 auto;
+    max-height: none;
+  }
+
+  .messages,
+  .user-input-display {
+    flex: 0 0 auto;
+    max-height: none;
+  }
+
+  .composer-shell {
+    width: 100%;
+    min-height: clamp(96px, 18dvh, 220px);
+    max-height: none;
+  }
+
+  .query-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .query-brand,
+  .query-row .composer-shell,
+  .query-spacer {
+    flex: 0 0 auto;
+    min-height: auto;
+    max-height: none;
+    width: 100%;
+  }
+
+  .query-spacer {
+    display: none;
+  }
+
+  .chat-main-scroll {
+    padding-right: 0;
+  }
+}

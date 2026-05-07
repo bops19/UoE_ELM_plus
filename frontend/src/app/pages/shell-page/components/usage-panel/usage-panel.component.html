@@ -1,0 +1,212 @@
+<aside class="pricing-pane">
+  <section class="usage-panel" [class.collapsed]="vm.usagePanelCollapsed()">
+    <div class="usage-header">
+      <h2>Usage</h2>
+      <button type="button" class="btn btn--sm btn--secondary token-history-btn" *ngIf="vm.showTokenHistoryAction()" (click)="vm.openTokenHistory()">
+        History
+      </button>
+      <button
+        type="button"
+        class="btn btn--sm btn--secondary panel-collapse-btn"
+        (click)="vm.toggleUsagePanel($event)"
+        [attr.aria-label]="vm.usagePanelCollapsed() ? 'Expand usage panel' : 'Collapse usage panel'"
+        [title]="vm.usagePanelCollapsed() ? 'Expand usage panel' : 'Collapse usage panel'"
+      >
+        <i class="bi bi-layout-sidebar-reverse"></i>
+      </button>
+    </div>
+    <div class="status loading" *ngIf="!vm.usagePanelCollapsed() && vm.loadingUsage()" role="status" aria-live="polite" aria-busy="true">Refreshing usage...</div>
+
+    <div class="usage-block" *ngIf="!vm.usagePanelCollapsed() && vm.showStandardUsagePanel()">
+
+
+
+      <div class="stat-block" *ngIf="vm.usageView() as usage">
+        <div class="stat-label">ACTIVE CHAT</div>
+        <div class="stat-value cost">{{ usage.panels.chatCostDisplay }}</div>
+      </div>
+
+      <div class="stat-divider"></div>
+
+      <div class="stat-block">
+        <div class="stat-label">CONTEXT WINDOW</div>
+        <div class="stat-value">{{ vm.contextWindowDisplay() }}</div>
+      </div>
+
+      <div class="stat-block" *ngIf="vm.hasContextWindowMetrics()">
+        <div class="stat-label">CURRENT QUERY</div>
+        <div class="stat-value">{{ vm.contextUsedPct().toFixed(1) }}%</div>
+        <div class="stat-note">
+          {{ (vm.currentResponseTotal() || 0) | number }} / {{ vm.contextWindow() | number }} tokens
+        </div>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill" [style.width]="vm.contextUsedPct() + '%'">
+          </div>
+        </div>
+      </div>
+
+      <ng-container *ngIf="vm.usageView() as usage">
+        <div class="stat-block" *ngIf="vm.hasContextWindowMetrics()">
+          <div class="stat-label">ACTIVE CHAT</div>
+          <div class="stat-value">{{ vm.totalChatContextPct().toFixed(1) }}%</div>
+          <div class="stat-note">
+            {{ usage.activeSession.totals.total | number }} / {{ vm.contextWindow() | number }} tokens
+          </div>
+          <div class="stat-bar-track">
+            <div class="stat-bar-fill" [style.width]="vm.totalChatContextBarPct() + '%'">
+            </div>
+          </div>
+        </div>
+      </ng-container>
+
+      <div class="stat-block" *ngIf="!vm.isVoiceTab()">
+        <div class="stat-label">INPUT TOKEN</div>
+        <div class="stat-value token-price-value">{{ vm.selectedModelInputPriceStr() }}</div>
+      </div>
+
+      <div class="stat-block" *ngIf="!vm.isVoiceTab()">
+        <div class="stat-label">OUTPUT TOKEN</div>
+        <div class="stat-value token-price-value">{{ vm.selectedModelOutputPriceStr() }}</div>
+      </div>
+
+      <div *ngIf="vm.isVoiceTab()">
+        <div class="stat-row-pair">
+          <div class="stat-cell">
+            <div class="stat-label">{{ vm.voicePrimaryAudioInputPriceLabel() }}</div>
+            <div class="stat-value-sm">{{ vm.voicePrimaryAudioInputPriceStr() }}</div>
+          </div>
+          <div class="stat-cell-sep"></div>
+          <div class="stat-cell">
+            <div class="stat-label">{{ vm.voicePrimaryAudioOutputPriceLabel() }}</div>
+            <div class="stat-value-sm">{{ vm.voicePrimaryAudioOutputPriceStr() }}</div>
+          </div>
+        </div>
+
+        <div class="stat-row-pair" *ngIf="!vm.isTranscribeVoiceMode()">
+          <div class="stat-cell">
+            <div class="stat-label">Transcribe in / 1M</div>
+            <div class="stat-value-sm">{{ vm.voiceTranscriptionInputPriceStr() }}</div>
+          </div>
+          <div class="stat-cell-sep"></div>
+          <div class="stat-cell">
+            <div class="stat-label">Transcribe out / 1M</div>
+            <div class="stat-value-sm">{{ vm.voiceTranscriptionOutputPriceStr() }}</div>
+          </div>
+        </div>
+
+        <div class="stat-note">{{ vm.voicePricingFooter() }}</div>
+      </div>
+
+    </div>
+
+    <div *ngIf="!vm.usagePanelCollapsed() && vm.isVideoMediaMode()">
+      <div class="stat-block">
+        <div class="stat-label">Visual media</div>
+        <div class="stat-value-sm">Video placeholder · {{ vm.selectedModel() }}</div>
+      </div>
+    </div>
+
+    <div *ngIf="!vm.usagePanelCollapsed() && vm.isSpeechVoiceMode()">
+      <div class="stat-block">
+        <div class="stat-label">Speech pricing</div>
+      </div>
+
+      <div class="stat-block" *ngIf="vm.ttsUsesCharacterPricing()">
+        <div class="stat-label">Speech generation / 1M chars</div>
+        <div class="stat-value-sm">{{ vm.ttsSpeechGenerationPriceStr() }}</div>
+      </div>
+
+      <div class="stat-row-pair" *ngIf="!vm.ttsUsesCharacterPricing()">
+        <div class="stat-cell">
+          <div class="stat-label">Text in / 1M</div>
+          <div class="stat-value-sm">{{ vm.ttsTextInputPriceStr() }}</div>
+        </div>
+        <div class="stat-cell-sep"></div>
+        <div class="stat-cell">
+          <div class="stat-label">Audio out / 1M</div>
+          <div class="stat-value-sm">{{ vm.ttsAudioOutputPriceStr() }}</div>
+        </div>
+      </div>
+
+      <div class="stat-note">{{ vm.ttsPricingFooter() }}</div>
+    </div>
+  </section>
+</aside>
+
+<div class="token-history-backdrop" *ngIf="vm.showTokenHistoryModal()" (click)="vm.closeTokenHistory($event)">
+  <div class="token-history-modal" role="dialog" aria-modal="true" aria-label="TOKEN HISTORY" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (click)="$event.stopPropagation()">
+    <div class="token-history-header">
+      <div class="token-history-title">TOKEN HISTORY</div>
+      <button type="button" class="token-history-close" (click)="vm.closeTokenHistory($event)" title="Close">x</button>
+    </div>
+
+    <div class="token-history-tabs">
+      <button type="button" class="token-history-tab-btn" [class.token-history-tab-active]="vm.isTokenHistoryTab('session')" (click)="vm.setTokenHistoryTab('session')">
+        ACTIVE SESSION
+      </button>
+      <button type="button" class="token-history-tab-btn" [class.token-history-tab-active]="vm.isTokenHistoryTab('today')" (click)="vm.setTokenHistoryTab('today')">
+        TODAY
+      </button>
+      <button type="button" class="token-history-tab-btn" [class.token-history-tab-active]="vm.isTokenHistoryTab('all_time')" (click)="vm.setTokenHistoryTab('all_time')">
+        OVERALL SO FAR
+      </button>
+    </div>
+
+    <table class="token-history-summary-table" *ngIf="!vm.loadingUsage()">
+      <tbody>
+        <tr>
+          <td><strong>MODELS:</strong> {{ tokenHistoryRows().length }}</td>
+          <td><strong>COST:</strong> {{ vm.tokenHistoryScopeTotalDisplay(vm.tokenHistoryTab()) }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="token-history-empty" *ngIf="vm.loadingUsage()">LOADING TOKEN HISTORY...</div>
+    <div *ngIf="!vm.loadingUsage()">
+      <div class="token-history-section">
+        <div class="token-history-controls">
+          <label class="token-history-filter-label" for="token-history-filter">Filter model</label>
+          <input
+            id="token-history-filter"
+            class="token-history-filter-input"
+            type="text"
+            [ngModel]="filterQuery"
+            (ngModelChange)="setFilterQuery($event)"
+            placeholder="Type model name..."
+          />
+        </div>
+        <div class="usage-table-wrap">
+          <table class="usage-table token-history-table" *ngIf="tokenHistoryRows().length > 0">
+            <thead>
+              <tr>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('model')">MODEL {{ sortIndicator('model') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('input')">INPUT {{ sortIndicator('input') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('reasoning')">REASONING {{ sortIndicator('reasoning') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('output')">OUTPUT {{ sortIndicator('output') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('total')">OVERALL {{ sortIndicator('total') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('cost')">COST {{ sortIndicator('cost') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('tokenSharePct')">% TOKENS {{ sortIndicator('tokenSharePct') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('costSharePct')">% COST {{ sortIndicator('costSharePct') }}</button></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of tokenHistoryRows()">
+                <td>{{ row.model }}</td>
+                <td>{{ row.input | number }}</td>
+                <td>{{ row.reasoning | number }}</td>
+                <td>{{ row.output | number }}</td>
+                <td>{{ row.total | number }}</td>
+                <td>{{ row.costDisplay }}</td>
+                <td>{{ row.tokenSharePct.toFixed(1) }}%</td>
+                <td>{{ row.costSharePct.toFixed(1) }}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="token-history-empty" *ngIf="tokenHistoryRows().length === 0">
+          {{ vm.tokenHistoryEmptyMessage(vm.tokenHistoryTab()) | uppercase }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

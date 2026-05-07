@@ -1,0 +1,23 @@
+<section class="tools-panel">
+  <h2>Embeddings (Migration Slice)</h2>
+  <div class="voice-grid">
+    <div class="voice-card">
+      <h3>Embeddings</h3>
+      <label>
+        Model
+        <input [ngModel]="vm.embeddingModel()" (ngModelChange)="vm.embeddingModel.set($event)" />
+      </label>
+      <textarea rows="2" [ngModel]="vm.embedTextInput()" (ngModelChange)="vm.embedTextInput.set($event)" placeholder="Text for /embed"></textarea>
+      <button type="button" (click)="vm.runEmbedText()">Run /embed</button>
+      <button type="button" (click)="vm.runEmbedIndex()" [disabled]="!vm.selectedSessionId()">Run /embed-index</button>
+      <textarea rows="2" [ngModel]="vm.embedQueryInput()" (ngModelChange)="vm.embedQueryInput.set($event)" placeholder="Search query"></textarea>
+      <label>
+        Top K
+        <input type="number" min="1" max="20" [ngModel]="vm.embedTopK()" (ngModelChange)="vm.embedTopK.set(+$event || 8)" />
+      </label>
+      <button type="button" (click)="vm.runEmbedSearch()" [disabled]="!vm.selectedSessionId()">Run /embed-search</button>
+    </div>
+  </div>
+  <div class="voice-status" *ngIf="vm.toolsStatus()" role="status" aria-live="polite">{{ vm.toolsStatus() }}</div>
+  <pre class="raw-json" *ngIf="vm.embedSearchResult()">{{ vm.embedSearchResult() }}</pre>
+</section>

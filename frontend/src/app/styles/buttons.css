@@ -1,0 +1,105 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  font-family: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--easing-default),
+    border-color var(--duration-fast) var(--easing-default),
+    color var(--duration-fast) var(--easing-default),
+    box-shadow var(--duration-fast) var(--easing-default);
+}
+
+.btn:disabled {
+  opacity: 1;
+  background: var(--color-surface-100);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-default);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+.btn--primary {
+  background: var(--color-brand-600);
+  color: var(--color-text-inverse);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-brand-700);
+}
+
+.btn--primary:disabled {
+  background: var(--color-brand-500);
+  color: var(--color-text-inverse);
+  border-color: var(--color-brand-500);
+}
+
+.btn--secondary {
+  background: var(--color-surface-0);
+  color: var(--color-brand-600);
+  border-color: var(--color-border-default);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-surface-75);
+}
+
+.btn--secondary:disabled {
+  background: var(--color-surface-100);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-default);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-surface-100);
+}
+
+.btn--ghost:disabled {
+  background: transparent;
+  color: var(--color-text-tertiary);
+  border-color: transparent;
+}
+
+.btn--danger {
+  background: var(--color-legacy-9b3d4a);
+  color: var(--color-text-inverse);
+}
+
+.btn--danger:disabled {
+  background: var(--color-legacy-9b3d4a);
+  color: var(--color-text-inverse);
+  border-color: var(--color-legacy-9b3d4a);
+}
+
+.btn--sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+
+.btn--lg {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--font-size-md);
+}
+
+.btn--icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}

@@ -1,0 +1,14 @@
+<div class="dialog-root" role="dialog" aria-modal="true" [attr.aria-labelledby]="titleId" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown.escape)="cancel()">
+  <h2 [id]="titleId">{{ title }}</h2>
+  <input
+    type="text"
+    [(ngModel)]="value"
+    [placeholder]="placeholder"
+    (keydown.enter)="confirm()"
+    autofocus
+  />
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-cancel" (click)="cancel()">Cancel</button>
+    <button type="button" class="btn btn-confirm" (click)="confirm()">{{ confirmLabel }}</button>
+  </div>
+</div>

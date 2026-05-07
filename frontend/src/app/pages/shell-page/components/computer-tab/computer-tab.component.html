@@ -1,0 +1,47 @@
+<section class="tools-panel">
+  <h2>Computer Agents (Migration Slice)</h2>
+  <div class="voice-grid">
+    <div class="voice-card">
+      <h3>Settings</h3>
+      <label>
+        Model
+        <input [ngModel]="vm.settingsModelInput()" (ngModelChange)="vm.settingsModelInput.set($event)" />
+      </label>
+      <label>
+        Effort
+        <input [ngModel]="vm.settingsEffortInput()" (ngModelChange)="vm.settingsEffortInput.set($event)" placeholder="minimal | low | medium | high" />
+      </label>
+      <button type="button" (click)="vm.saveSettings()">Save settings</button>
+      <div class="voice-status" *ngIf="vm.settingsStatus()" role="status" aria-live="polite">{{ vm.settingsStatus() }}</div>
+    </div>
+
+    <div class="voice-card">
+      <h3>Computer Runs</h3>
+      <label>
+        Model
+        <input [ngModel]="vm.computerModel()" (ngModelChange)="vm.computerModel.set($event)" />
+      </label>
+      <label>
+        Start URL
+        <input [ngModel]="vm.computerStartUrl()" (ngModelChange)="vm.computerStartUrl.set($event)" placeholder="https://example.com" />
+      </label>
+      <textarea rows="3" [ngModel]="vm.computerPrompt()" (ngModelChange)="vm.computerPrompt.set($event)" placeholder="Computer task prompt"></textarea>
+      <button type="button" (click)="vm.startComputerRun()">Start run</button>
+      <button type="button" (click)="vm.stepComputerRun()" [disabled]="!vm.computerRun() || vm.computerRun()?.status !== 'needs_action'">Step run</button>
+      <button type="button" (click)="vm.closeComputerRun()" [disabled]="!vm.computerRun()">Close run</button>
+    </div>
+
+    <div class="voice-card">
+      <h3>Usage History + Catalog</h3>
+      <button type="button" (click)="vm.loadUsageHistory()">Refresh usage history</button>
+      <button type="button" (click)="vm.loadModelCatalogRaw()">Refresh model catalog</button>
+      <div *ngIf="vm.loadingUsageHistory()" class="status loading" role="status" aria-live="polite" aria-busy="true">Loading usage history...</div>
+      <div *ngIf="vm.usageHistory() as history">
+        <p><strong>{{ history.summary.costDisplay }}</strong> on {{ history.date }} ({{ history.rows.length }} rows)</p>
+      </div>
+    </div>
+  </div>
+  <div class="voice-status" *ngIf="vm.toolsStatus()" role="status" aria-live="polite">{{ vm.toolsStatus() }}</div>
+  <pre class="raw-json" *ngIf="vm.computerRun()">{{ vm.computerRun() | json }}</pre>
+  <pre class="raw-json" *ngIf="vm.modelCatalogRaw()">{{ vm.modelCatalogRaw() | json }}</pre>
+</section>

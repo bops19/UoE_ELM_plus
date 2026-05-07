@@ -1,0 +1,44 @@
+<section class="voice-panel">
+  <h2>Voice / Audio / Transcription (Migration Slice)</h2>
+  <div class="voice-grid">
+    <div class="voice-card" *ngIf="vm.isVoiceModeActive('realtime')">
+      <h3>Realtime Bootstrap</h3>
+      <button type="button" (click)="vm.bootstrapRealtimeVoice()">Bootstrap realtime voice</button>
+    </div>
+    <div class="voice-card" *ngIf="vm.isVoiceModeActive('turn')">
+      <h3>Audio Turn</h3>
+      <label>
+        Model
+        <input [ngModel]="vm.audioTurnModel()" (ngModelChange)="vm.onAudioTurnModelChange($event)" />
+      </label>
+      <label>
+        Voice
+        <input [ngModel]="vm.audioTurnVoice()" (ngModelChange)="vm.audioTurnVoice.set($event)" />
+      </label>
+      <input type="file" accept="audio/*" (change)="vm.onAudioTurnFileSelected($event)" />
+    </div>
+    <div class="voice-card" *ngIf="vm.isVoiceModeActive('transcribe')">
+      <h3>Transcription Turn</h3>
+      <label>
+        Model
+        <input [ngModel]="vm.transcriptionModel()" (ngModelChange)="vm.onTranscriptionModelChange($event)" />
+      </label>
+      <input type="file" accept="audio/*" (change)="vm.onTranscriptionFileSelected($event)" />
+    </div>
+    <div class="voice-card" *ngIf="vm.isVoiceModeActive('tts')">
+      <h3>Text to Speech</h3>
+      <label>
+        Model
+        <input [ngModel]="vm.ttsModel()" (ngModelChange)="vm.onTtsModelChange($event)" />
+      </label>
+      <label>
+        Voice
+        <input [ngModel]="vm.ttsVoice()" (ngModelChange)="vm.ttsVoice.set($event)" />
+      </label>
+      <textarea rows="3" [ngModel]="vm.ttsText()" (ngModelChange)="vm.ttsText.set($event)" placeholder="Text to speak..."></textarea>
+      <button type="button" (click)="vm.runTts()">Generate speech</button>
+      <audio *ngIf="vm.ttsAudioUrl()" [src]="vm.ttsAudioUrl()" controls></audio>
+    </div>
+  </div>
+  <div class="voice-status" *ngIf="vm.voiceStatus()" role="status" aria-live="polite">{{ vm.voiceStatus() }}</div>
+</section>
