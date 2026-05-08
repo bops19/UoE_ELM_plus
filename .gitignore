@@ -1,0 +1,40 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Environment & secrets ---
+.env
+.env.local
+.env.*.local
+*.db
+*.sqlite
+*.sqlite3
+runtime/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# --- Editors ---
+.vscode/
+.idea/
+
+# NOTE: static/ng/ is intentionally NOT ignored — it contains the pre-built
+# Angular frontend and is committed directly to this repo.
