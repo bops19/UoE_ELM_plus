@@ -26,6 +26,6 @@ RUN playwright install --with-deps chromium
 COPY . ./
 
 ENV PYTHONUNBUFFERED=1
-EXPOSE 5000
+EXPOSE 9595
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:9595", "--workers", "2", "app:app"]

@@ -90,7 +90,7 @@ set API_KEY=your-secret-here
 python run.py
 ```
 
-Open **http://localhost:5000** in your browser.
+Open **http://localhost:9595** in your browser.
 
 ---
 
@@ -105,7 +105,7 @@ cp .env.example .env   # add your OPENAI_API_KEY and API_KEY
 docker compose up
 ```
 
-Open **http://localhost:5000** in your browser.
+Open **http://localhost:9595** in your browser.
 
 ---
 

@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "5000:5000"
+      - "9595:9595"
     env_file:
       - .env
     volumes:
