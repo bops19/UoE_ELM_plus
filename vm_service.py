@@ -1,7 +1,7 @@
 import copy
 import sqlite3
 
-from model_catalog import MODEL_METADATA
+from model_catalog import MODEL_METADATA, normalize_service_tier, pricing_for_model
 from usage_history import build_usage_history_payload
 
 
@@ -181,14 +181,25 @@ def build_usage_view(conn: sqlite3.Connection, session_id: str | None, voice_mod
     }
 
 
-def build_catalog_view(selected_model: str | None, voice_mode: str | None = None) -> dict:
+def build_catalog_view(
+    selected_model: str | None,
+    voice_mode: str | None = None,
+    service_tier: str | None = None,
+) -> dict:
     model = str(selected_model or "").strip()
     selected_meta = _resolve_model_meta(model)
-    input_price = selected_meta.get("inputPricePerMtok") if selected_meta else None
-    output_price = selected_meta.get("outputPricePerMtok") if selected_meta else None
+    normalized_tier = normalize_service_tier(service_tier)
+    selected_pricing = pricing_for_model(model, normalized_tier) if model else None
+    input_price = (selected_pricing or {}).get("input") if selected_pricing else (selected_meta.get("inputPricePerMtok") if selected_meta else None)
+    cached_input_price = (selected_pricing or {}).get("cached_input") if selected_pricing else (selected_meta.get("cachedInputPricePerMtok") if selected_meta else None)
+    output_price = (selected_pricing or {}).get("output") if selected_pricing else (selected_meta.get("outputPricePerMtok") if selected_meta else None)
     speech_price = selected_meta.get("speechGenerationPricePerMchar") if selected_meta else None
-    audio_input_price = (selected_meta.get("audioInputPricePerMtok") if selected_meta else None) or input_price
-    audio_output_price = (selected_meta.get("audioOutputPricePerMtok") if selected_meta else None) or output_price
+    audio_input_price = (selected_pricing or {}).get("audio_input") if selected_pricing else (selected_meta.get("audioInputPricePerMtok") if selected_meta else None)
+    audio_output_price = (selected_pricing or {}).get("audio_output") if selected_pricing else (selected_meta.get("audioOutputPricePerMtok") if selected_meta else None)
+    if audio_input_price in (None, 0):
+        audio_input_price = input_price
+    if audio_output_price in (None, 0):
+        audio_output_price = output_price
 
     transcribe_meta = _resolve_model_meta("gpt-4o-mini-transcribe")
     transcribe_input = (transcribe_meta.get("audioInputPricePerMtok") if transcribe_meta else None) or (
@@ -219,7 +230,9 @@ def build_catalog_view(selected_model: str | None, voice_mode: str | None = None
     return {
         "selectedModel": model,
         "voiceMode": mode,
+        "serviceTier": normalized_tier,
         "selectedModelInputPriceStr": _format_price_per_million(input_price) if selected_meta else "—",
+        "selectedModelCachedInputPriceStr": _format_price_per_million(cached_input_price) if selected_meta else "—",
         "selectedModelOutputPriceStr": _format_price_per_million(output_price) if selected_meta else "—",
         "voicePrimaryAudioInputPriceLabel": (
             "Transcribe in / 1M"
@@ -272,4 +285,3 @@ def build_session_view(detail: dict | None) -> dict | None:
         "messageCount": len([item for item in messages if item.get("role") == "user"]),
         "attachmentCount": len(attachments),
     }
-

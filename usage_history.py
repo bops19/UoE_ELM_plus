@@ -21,6 +21,7 @@ def _json_loads(raw, default=None):
 def empty_usage() -> dict:
     return {
         "input": 0,
+        "cachedInput": 0,
         "output": 0,
         "total": 0,
         "reasoning": 0,
@@ -40,10 +41,12 @@ def empty_token_history_scope() -> dict:
 def normalize_usage(usage: dict | None) -> dict:
     usage = usage or {}
     input_tokens = int(usage.get("input") or 0)
+    cached_input_tokens = int(usage.get("cachedInput") or 0)
     output_tokens = int(usage.get("output") or 0)
     total_tokens = max(int(usage.get("total") or 0), input_tokens + output_tokens)
     return {
         "input": input_tokens,
+        "cachedInput": max(0, cached_input_tokens),
         "output": output_tokens,
         "total": total_tokens,
         "reasoning": int(usage.get("reasoning") or 0),
@@ -66,10 +69,10 @@ def _usage_details(usage: dict | None) -> dict:
     }
 
 
-def usage_cost(usage: dict | None, model: str | None) -> float:
+def usage_cost(usage: dict | None, model: str | None, service_tier: str | None = None) -> float:
     if not usage or not model:
         return 0.0
-    pricing = pricing_for_model(model)
+    pricing = pricing_for_model(model, service_tier=service_tier)
     if not pricing:
         return 0.0
     details = _usage_details(usage)
@@ -89,10 +92,13 @@ def usage_cost(usage: dict | None, model: str | None) -> float:
             + (details["outputAudio"] / 1_000_000) * float(pricing.get("audio_output") or pricing.get("output") or 0.0)
         )
     normalized_usage = normalize_usage(usage)
-    input_cost = (normalized_usage["input"] / 1_000_000) * float(pricing["input"])
-    billable_output_tokens = max(0, normalized_usage["total"] - normalized_usage["input"])
-    output_cost = (billable_output_tokens / 1_000_000) * float(pricing["output"])
-    return input_cost + output_cost
+    cached_input_tokens = max(0, int(usage.get("cachedInput") or 0))
+    input_tokens = max(0, normalized_usage["input"])
+    non_cached_input_tokens = max(0, input_tokens - cached_input_tokens)
+    input_cost = (non_cached_input_tokens / 1_000_000) * float(pricing["input"])
+    cached_input_cost = (cached_input_tokens / 1_000_000) * float(pricing.get("cached_input") or pricing["input"])
+    output_cost = (max(0, normalized_usage["output"]) / 1_000_000) * float(pricing["output"])
+    return input_cost + cached_input_cost + output_cost
 
 
 def token_history_scope(
@@ -134,6 +140,7 @@ def token_history_scope(
         cost = float(stored_cost) if stored_cost is not None else usage_cost(normalized_usage, row["usage_model"])
 
         totals["input"] += normalized_usage["input"]
+        totals["cachedInput"] += normalized_usage["cachedInput"]
         totals["output"] += normalized_usage["output"]
         totals["total"] += normalized_usage["total"]
         totals["reasoning"] += normalized_usage["reasoning"]
@@ -142,12 +149,14 @@ def token_history_scope(
         current = rows_by_model.setdefault(model, {
             "model": model,
             "input": 0,
+            "cachedInput": 0,
             "output": 0,
             "total": 0,
             "reasoning": 0,
             "cost": 0.0,
         })
         current["input"] += normalized_usage["input"]
+        current["cachedInput"] += normalized_usage["cachedInput"]
         current["output"] += normalized_usage["output"]
         current["total"] += normalized_usage["total"]
         current["reasoning"] += normalized_usage["reasoning"]

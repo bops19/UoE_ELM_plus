@@ -3,7 +3,7 @@
 import os
 
 from flask import Response, redirect, request, send_from_directory
-from model_catalog import get_model_catalog_payload
+from model_catalog import get_model_catalog_payload, normalize_service_tier
 from model_catalog import DEV_NAME_FRAGMENT_BETA, DEV_NAME_KEY_BETA
 from prompt_presets_store import load_prompt_presets
 from prompt_session_service import normalize_session_text
@@ -65,7 +65,14 @@ def angular_app_entry(subpath: str = ""):
 
 
 def get_model_catalog():
-    return get_model_catalog_payload()
+    processing_mode = normalize_session_text(request.args.get("processingMode") or "")
+    requested_tier = "default"
+    if processing_mode == "flex":
+        requested_tier = "flex"
+    elif processing_mode == "priority":
+        requested_tier = "priority"
+    service_tier = normalize_service_tier(requested_tier)
+    return get_model_catalog_payload(service_tier=service_tier)
 
 
 def settings():
@@ -134,7 +141,14 @@ def vm_session(session_id: str):
 def vm_catalog():
     selected_model = normalize_session_text(request.args.get("selectedModel") or "")
     voice_mode = normalize_session_text(request.args.get("voiceMode") or "")
-    catalog_payload = get_model_catalog_payload()
+    processing_mode = normalize_session_text(request.args.get("processingMode") or "")
+    requested_tier = "default"
+    if processing_mode == "flex":
+        requested_tier = "flex"
+    elif processing_mode == "priority":
+        requested_tier = "priority"
+    service_tier = normalize_service_tier(requested_tier)
+    catalog_payload = get_model_catalog_payload(service_tier=service_tier)
     if not selected_model:
         defaults = catalog_payload.get("defaults") or {}
         default_use_case = str(defaults.get("useCase") or "general")
@@ -148,6 +162,10 @@ def vm_catalog():
             selected_model = str(default_models[0] or "")
     return {
         "catalog": catalog_payload,
-        "catalogView": build_catalog_view(selected_model=selected_model, voice_mode=voice_mode),
+        "catalogView": build_catalog_view(
+            selected_model=selected_model,
+            voice_mode=voice_mode,
+            service_tier=service_tier,
+        ),
         "developerLabel": _developer_label(),
     }

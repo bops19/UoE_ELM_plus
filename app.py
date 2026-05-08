@@ -851,10 +851,37 @@ def _usage_payload(usage, responses_api=False):
         input_tokens = int(_safe_get(usage, "input_tokens", default=0) or 0)
         output_tokens = int(_safe_get(usage, "output_tokens", default=0) or 0)
         reasoning_tokens = int(_safe_get(usage, "output_tokens_details", "reasoning_tokens", default=0) or 0)
+        input_details = _safe_get(usage, "input_token_details", default={})
+        output_details = _safe_get(usage, "output_token_details", default={})
     else:
         input_tokens = int(_safe_get(usage, "prompt_tokens", default=0) or 0)
         output_tokens = int(_safe_get(usage, "completion_tokens", default=0) or 0)
         reasoning_tokens = int(_safe_get(usage, "completion_tokens_details", "reasoning_tokens", default=0) or 0)
+        input_details = _safe_get(usage, "prompt_tokens_details", default={})
+        output_details = _safe_get(usage, "completion_tokens_details", default={})
+
+    input_details = input_details if isinstance(input_details, dict) else {}
+    output_details = output_details if isinstance(output_details, dict) else {}
+    cached_details = input_details.get("cached_tokens_details") if isinstance(input_details.get("cached_tokens_details"), dict) else {}
+
+    cached_text = int(cached_details.get("text_tokens") or 0)
+    cached_audio = int(cached_details.get("audio_tokens") or 0)
+    cached_image = int(cached_details.get("image_tokens") or 0)
+    cached_total = int(input_details.get("cached_tokens") or 0)
+    if cached_total <= 0:
+        cached_total = cached_text + cached_audio + cached_image
+
+    input_text = int(input_details.get("text_tokens") or 0)
+    input_audio = int(input_details.get("audio_tokens") or 0)
+    input_image = int(input_details.get("image_tokens") or 0)
+    if input_text + input_audio + input_image <= 0 and input_tokens > 0:
+        input_text = input_tokens
+    input_tokens = max(input_tokens, input_text + input_audio + input_image)
+
+    output_text = int(output_details.get("text_tokens") or 0)
+    output_audio = int(output_details.get("audio_tokens") or 0)
+    if output_text + output_audio <= 0 and output_tokens > 0:
+        output_text = output_tokens
 
     fallback_total = input_tokens + output_tokens
     total_tokens = int(_safe_get(usage, "total_tokens", default=fallback_total) or fallback_total)
@@ -864,6 +891,17 @@ def _usage_payload(usage, responses_api=False):
         "output": output_tokens,
         "total": max(total_tokens, fallback_total),
         "reasoning": reasoning_tokens,
+        "cachedInput": max(0, cached_total),
+        "details": {
+            "inputText": input_text,
+            "inputAudio": input_audio,
+            "inputImage": input_image,
+            "inputCachedText": cached_text,
+            "inputCachedAudio": cached_audio,
+            "inputCachedImage": cached_image,
+            "outputText": output_text,
+            "outputAudio": output_audio,
+        },
     }
 
 
@@ -932,6 +970,7 @@ def _voice_usage_payload(raw_usage, source: str | None = None):
         "output": output_tokens,
         "total": max(total_tokens, input_tokens + output_tokens),
         "reasoning": reasoning_tokens,
+        "cachedInput": max(0, details["inputCachedText"] + details["inputCachedAudio"] + details["inputCachedImage"]),
         "details": details,
     }
     if source:
@@ -945,6 +984,7 @@ def _combine_usage_payloads(*usages):
         "output": 0,
         "total": 0,
         "reasoning": 0,
+        "cachedInput": 0,
     }
     details = {
         "inputText": 0,
@@ -966,6 +1006,7 @@ def _combine_usage_payloads(*usages):
         totals["output"] += int(usage.get("output") or 0)
         totals["total"] += int(usage.get("total") or 0)
         totals["reasoning"] += int(usage.get("reasoning") or 0)
+        totals["cachedInput"] += int(usage.get("cachedInput") or 0)
         usage_details = usage.get("details") if isinstance(usage.get("details"), dict) else {}
         for key in details:
             details[key] += int(usage_details.get(key) or 0)

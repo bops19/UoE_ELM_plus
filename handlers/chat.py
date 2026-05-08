@@ -516,7 +516,13 @@ def chat():
             log("✅", "DONE       ", f"{chunk_count} chunks streamed")
             log(
                 "🔢", "USAGE      ",
-                f"in={usage_data['input']} out={usage_data['output']} total={usage_data['total']} reasoning={usage_data['reasoning']}"
+                (
+                    f"in={usage_data['input']} out={usage_data['output']} total={usage_data['total']} "
+                    f"reasoning={usage_data['reasoning']} cached_in={int(usage_data.get('cachedInput') or 0)} "
+                    f"(cached_text={int((usage_data.get('details') or {}).get('inputCachedText') or 0)} "
+                    f"cached_audio={int((usage_data.get('details') or {}).get('inputCachedAudio') or 0)} "
+                    f"cached_image={int((usage_data.get('details') or {}).get('inputCachedImage') or 0)})"
+                )
                 if usage_data else "usage=unavailable",
             )
             log("💡", "GPT SAYS   ", f'"{full_reply[:80]}{"..." if len(full_reply) > 80 else ""}"')
