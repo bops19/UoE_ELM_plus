@@ -23,39 +23,29 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.12, Flask, SQLite, Gunicorn |
-| Frontend | Angular 21, TypeScript, RxJS |
-| AI | OpenAI API (Chat, Responses, Realtime, Images, Embeddings) |
-| Automation | Playwright (Chromium) |
-| Infra | Docker, GitHub Actions |
-
----
-
 ## Prerequisites
 
-- Python 3.12+
-- Node.js 22 (LTS) — for frontend development
+- **Python 3.10+**
 - An [OpenAI API key](https://platform.openai.com/account/api-keys)
+
+> No Node.js required — the frontend is pre-built and included in `static/ng/`.
 
 ---
 
-## Quick Start (Local)
+## Quick Start
+
+### macOS / Linux
 
 ```bash
-# 1. Clone and enter the repo
-git clone <repo-url>
-cd <repo-folder>
+# 1. Clone the repo
+git clone https://github.com/bops19/UoE_ELM_plus.git
+cd UoE_ELM_plus
 
-# 2. Create a virtual environment
-python -m venv venv
-source venv/bin/activate        # Mac/Linux
-venv\Scripts\activate           # Windows
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
-# 3. Install Python dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
 # 4. Configure environment
@@ -66,33 +56,44 @@ cp .env.example .env
 python run.py
 ```
 
-Open **http://localhost:9595** in your browser.
+### Windows
 
-### Frontend development (optional)
+```cmd
+:: 1. Clone the repo
+git clone https://github.com/bops19/UoE_ELM_plus.git
+cd UoE_ELM_plus
 
-If you want to run the Angular dev server or rebuild the frontend:
+:: 2. Create and activate a virtual environment
+python -m venv venv
+venv\Scripts\activate
 
-```bash
-cd frontend
-npm install
-npm run build        # production build → output to static/ng/
-npm start            # dev server at http://localhost:4200
+:: 3. Install dependencies
+pip install -r requirements.txt
+
+:: 4. Configure environment
+copy .env.example .env
+:: Edit .env and set OPENAI_API_KEY and API_KEY
+
+:: 5. Start the server
+python run.py
 ```
+
+Open **http://localhost:5000** in your browser.
 
 ---
 
 ## Docker
 
-```bash
-# Build and run (builds frontend automatically)
-docker compose up --build
+No Python or pip install needed — just Docker Desktop.
 
-# Or build the image directly
-docker build -t elmplus .
-docker run -p 5000:5000 --env-file .env elmplus
+```bash
+git clone https://github.com/bops19/UoE_ELM_plus.git
+cd UoE_ELM_plus
+cp .env.example .env   # add your OPENAI_API_KEY and API_KEY
+docker compose up
 ```
 
-The container runs on port **5000**.
+Open **http://localhost:5000** in your browser.
 
 ---
 
@@ -135,12 +136,10 @@ runtime/
 ```
 .
 ├── app.py                  # Flask app factory + route wiring
+├── run.py                  # Dev server entry point
 ├── handlers/               # Request handlers (chat, voice, image, …)
 ├── routes/                 # Flask blueprints
-├── frontend/               # Angular 21 workspace
-│   └── src/app/
-│       ├── core/           # API client, interceptors
-│       └── pages/          # Shell page and feature components
+├── static/ng/              # Pre-built Angular frontend (no build step needed)
 ├── tests/                  # Backend test suite
 ├── Dockerfile
 └── docker-compose.yml
@@ -151,13 +150,7 @@ runtime/
 ## Running Tests
 
 ```bash
-# Backend
 python -m pytest tests/ -v
-
-# Frontend
-cd frontend
-npm run test
-npm run e2e        # Playwright end-to-end
 ```
 
 ---
