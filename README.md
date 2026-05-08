@@ -50,7 +50,13 @@ pip install -r requirements.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY and API_KEY
+
+# Open .env in a text editor and fill in your keys:
+#   OPENAI_API_KEY=sk-...
+#   API_KEY=any-secret-string-you-choose
+# Or set them directly from the terminal:
+export OPENAI_API_KEY="sk-your-key-here"
+export API_KEY="your-secret-here"
 
 # 5. Start the server
 python run.py
@@ -72,7 +78,13 @@ pip install -r requirements.txt
 
 :: 4. Configure environment
 copy .env.example .env
-:: Edit .env and set OPENAI_API_KEY and API_KEY
+
+:: Open .env in Notepad and fill in your keys:
+::   OPENAI_API_KEY=sk-...
+::   API_KEY=any-secret-string-you-choose
+:: Or set them directly in the terminal:
+set OPENAI_API_KEY=sk-your-key-here
+set API_KEY=your-secret-here
 
 :: 5. Start the server
 python run.py
