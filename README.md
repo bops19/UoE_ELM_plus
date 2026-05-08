@@ -131,7 +131,13 @@ See `.env.example` for the full list with defaults.
 
 ## Runtime Data
 
-All runtime state is written to `runtime/` (gitignored):
+Runtime files (database, uploads, logs) are stored in a user profile directory — **not** inside the repo folder. The location depends on your OS:
+
+| OS | Default path |
+|---|---|
+| **macOS** | `~/Library/Application Support/elmplus/runtime/` |
+| **Windows** | `%APPDATA%\elmplus\runtime\` |
+| **Linux** | `~/.local/share/elmplus/runtime/` |
 
 ```
 runtime/
@@ -139,6 +145,12 @@ runtime/
 ├── chat_files/            # Uploaded attachments
 ├── prompt_presets.json    # Saved prompt presets
 └── token_usage_log.jsonl  # Token usage audit log
+```
+
+To override the location, set `ELMPLUS_RUNTIME_DIR` in your `.env`:
+
+```
+ELMPLUS_RUNTIME_DIR=/path/to/your/runtime
 ```
 
 ---
