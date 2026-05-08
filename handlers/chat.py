@@ -3,9 +3,16 @@
 import json
 import time
 
+import openai
 from flask import Response, stream_with_context
 
-from model_catalog import model_supports_reasoning_effort, model_uses_responses_api
+from model_catalog import (
+    model_supports_flex_service_tier,
+    model_supports_priority_service_tier,
+    model_supports_reasoning_effort,
+    model_uses_responses_api,
+    normalize_service_tier,
+)
 from session_store import (
     ensure_session,
     insert_message,
@@ -61,6 +68,7 @@ def chat():
             "includeWebSearch",
             "deepResearchTools",
             "deepResearchMcpProfileId",
+            "serviceTier",
         },
         required_keys={"sessionId", "userText"},
     )
@@ -81,6 +89,29 @@ def chat():
     include_web_search, include_web_search_error = _normalize_include_web_search(data.get("includeWebSearch"))
     if include_web_search_error:
         return _error_response(include_web_search_error, 400, "include_web_search_invalid")
+    raw_service_tier = str(data.get("serviceTier") or "").strip().lower()
+    service_tier = None
+    if raw_service_tier:
+        normalized_service_tier = normalize_service_tier(raw_service_tier)
+        if normalized_service_tier != raw_service_tier:
+            return _error_response(
+                "serviceTier must be one of: 'default', 'flex', 'priority'.",
+                400,
+                "service_tier_invalid",
+            )
+        if raw_service_tier == "priority" and not model_supports_priority_service_tier(model):
+            return _error_response(
+                f"serviceTier='priority' is not supported for model '{model}'.",
+                400,
+                "service_tier_model_not_supported",
+            )
+        if raw_service_tier == "flex" and not model_supports_flex_service_tier(model):
+            return _error_response(
+                f"serviceTier='flex' is not supported for model '{model}'.",
+                400,
+                "service_tier_model_not_supported",
+            )
+        service_tier = raw_service_tier
     if include_web_search and use_case not in {"general", "reasoning"}:
         return _error_response(
             "includeWebSearch is supported only for general and reasoning use cases.",
@@ -164,6 +195,8 @@ def chat():
     log("💬", "NEW MESSAGE", f"(turn {turn})")
     log("🤖", "MODEL      ", model)
     log("🧠", "THINKING   ", effort or "none")
+    if service_tier:
+        log("⚙️ ", "SERVICE    ", service_tier)
     log("🔀", "API ROUTE  ", "Responses API" if use_responses_api else "Chat Completions")
     if use_case == "deep" and deep_research_tools:
         log(
@@ -193,6 +226,18 @@ def chat():
         log("📎", "FILES      ", f"{len(attachments)} active attachment(s) included")
     log("📡", "STREAMING  ", "started...")
     print("─" * 60, flush=True)
+    assistant_control_payload = {
+        "useCase": use_case,
+        "model": model,
+        "processingMode": (
+            "flex" if service_tier == "flex"
+            else "priority" if service_tier == "priority"
+            else "standard"
+        ),
+        "serviceTier": service_tier or "default",
+        "thinking": effort or "none",
+        "includeWebSearch": include_web_search is True,
+    }
 
     def generate():
         full_reply = ""
@@ -321,6 +366,8 @@ def chat():
                     kwargs["tools"] = deep_research_tools
                 elif chat_web_tools:
                     kwargs["tools"] = chat_web_tools
+                if service_tier:
+                    kwargs["service_tier"] = service_tier
 
                 stream = _openai_client().responses.create(**kwargs)
                 for event in stream:
@@ -370,6 +417,8 @@ def chat():
                     log("🧪", "REASONING  ", "disabled (none selected)")
                 else:
                     log("⚠️ ", "REASONING  ", f"not supported for {model}, skipping")
+                if service_tier:
+                    kwargs["service_tier"] = service_tier
 
                 stream = _openai_client().chat.completions.create(**kwargs)
                 for chunk in stream:
@@ -415,7 +464,7 @@ def chat():
                 yield reasoning_update
 
             usage_data = _usage_payload(usage, responses_api=use_responses_api) if usage else None
-            response_cost = usage_cost(usage_data, model) if usage_data else None
+            response_cost = usage_cost(usage_data, model, service_tier=service_tier) if usage_data else None
             elapsed_sec = max(0.0, time.monotonic() - started_at)
             reasoning_summary = official_reasoning_summary.strip() or latest_reasoning or "\n".join(reasoning_trace_lines[-6:]) or "Reasoning trace unavailable for this turn."
             reasoning_status = "complete" if reasoning_summary else "unavailable"
@@ -424,6 +473,7 @@ def chat():
                     conn,
                     assistant_message_id,
                     content=full_reply,
+                    payload={"control": assistant_control_payload},
                     usage=usage_data,
                     usage_model=model,
                     usage_cost=response_cost,
@@ -498,11 +548,27 @@ def chat():
                 except Exception:
                     pass
             elapsed_sec = max(0.0, time.monotonic() - started_at)
+
+            is_overload = isinstance(exc, (openai.RateLimitError, openai.APIStatusError)) and (
+                getattr(exc, "status_code", None) in (429, 529)
+                or "too many requests" in str(exc).lower()
+                or "overloaded" in str(exc).lower()
+            )
+            if is_overload and service_tier == "flex":
+                user_message = "Flex processing is currently overloaded — please try again in a few minutes, or switch to the Default tier."
+                error_code = "flex_overloaded"
+            elif is_overload:
+                user_message = "The API is currently overloaded — please try again in a few minutes."
+                error_code = "api_overloaded"
+            else:
+                user_message = "Request failed. Please retry."
+                error_code = "chat_generation_failed"
+
             with _db() as conn:
                 update_message(
                     conn,
                     assistant_message_id,
-                    content=full_reply or "[Request failed. Please retry.]",
+                    content=full_reply or f"[{user_message}]",
                     elapsed_sec=elapsed_sec,
                     reasoning_summary=latest_reasoning or "Reasoning trace unavailable because the request failed.",
                     reasoning_status="error",
@@ -512,6 +578,6 @@ def chat():
             _security_log("CHAT ERR   ", f"{type(exc).__name__}: {str(exc)[:300]}")
             print("─" * 60, flush=True)
             yield process_event("completed", "error", "Request failed")
-            yield f"data: {json.dumps({'error': 'Request failed. Please retry.', 'errorCode': 'chat_generation_failed', 'requestId': _request_id()})}\n\n"
+            yield f"data: {json.dumps({'error': user_message, 'errorCode': error_code, 'requestId': _request_id()})}\n\n"
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
