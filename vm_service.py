@@ -100,6 +100,8 @@ def build_usage_view(conn: sqlite3.Connection, session_id: str | None, voice_mod
     payload = build_usage_history_payload(conn, session_id=session_id or None)
     active_scope = _usage_scope_view(payload.get("activeSession") or {})
     today_scope = _usage_scope_view(payload.get("today") or {})
+    week_scope = _usage_scope_view(payload.get("week") or {})
+    month_scope = _usage_scope_view(payload.get("month") or {})
     all_time_scope = _usage_scope_view(payload.get("allTime") or {})
     if payload.get("today", {}).get("date"):
         today_scope["date"] = payload["today"]["date"]
@@ -172,6 +174,8 @@ def build_usage_view(conn: sqlite3.Connection, session_id: str | None, voice_mod
         "lastResponse": last_response,
         "activeSession": active_scope,
         "today": today_scope,
+        "week": week_scope,
+        "month": month_scope,
         "allTime": all_time_scope,
         "panels": {
             "chatCostDisplay": active_scope["totals"]["costDisplay"],

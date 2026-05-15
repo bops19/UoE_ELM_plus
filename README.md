@@ -23,89 +23,76 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 ---
 
-## Prerequisites
+## Tech Stack
 
-- **Python 3.10+**
-- An [OpenAI API key](https://platform.openai.com/account/api-keys)
-
-> No Node.js required — the frontend is pre-built and included in `static/ng/`.
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.12, Flask, SQLite, Gunicorn |
+| Frontend | Angular 21, TypeScript, RxJS |
+| AI | OpenAI API (Chat, Responses, Realtime, Images, Embeddings) |
+| Automation | Playwright (Chromium) |
+| Infra | Docker, GitHub Actions |
 
 ---
 
-## Quick Start
+## Prerequisites
 
-### macOS / Linux
+- Python 3.12+
+- Node.js 22 (LTS) — for frontend development
+- An [OpenAI API key](https://platform.openai.com/account/api-keys)
+
+---
+
+## Quick Start (Local)
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/bops19/UoE_ELM_plus.git
-cd UoE_ELM_plus
+# 1. Clone and enter the repo
+git clone <repo-url>
+cd <repo-folder>
 
-# 2. Create and activate a virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# 2. Create a virtual environment
+python -m venv venv
+source venv/bin/activate        # Mac/Linux
+venv\Scripts\activate           # Windows
 
-# 3. Install dependencies
+# 3. Install Python dependencies
 pip install -r requirements.txt
 
 # 4. Configure environment
 cp .env.example .env
-
-# Open .env in a text editor and fill in your keys:
-#   OPENAI_API_KEY=sk-...
-#   API_KEY=any-secret-string-you-choose
-# Or set them directly from the terminal:
-export OPENAI_API_KEY="sk-your-key-here"
-export API_KEY="your-secret-here"
+# Edit .env and set OPENAI_API_KEY and API_KEY
 
 # 5. Start the server
 python run.py
 ```
 
-### Windows
-
-```cmd
-:: 1. Clone the repo
-git clone https://github.com/bops19/UoE_ELM_plus.git
-cd UoE_ELM_plus
-
-:: 2. Create and activate a virtual environment
-python -m venv venv
-venv\Scripts\activate
-
-:: 3. Install dependencies
-pip install -r requirements.txt
-
-:: 4. Configure environment
-copy .env.example .env
-
-:: Open .env in Notepad and fill in your keys:
-::   OPENAI_API_KEY=sk-...
-::   API_KEY=any-secret-string-you-choose
-:: Or set them directly in the terminal:
-set OPENAI_API_KEY=sk-your-key-here
-set API_KEY=your-secret-here
-
-:: 5. Start the server
-python run.py
-```
-
 Open **http://localhost:9595** in your browser.
+
+### Frontend development (optional)
+
+If you want to run the Angular dev server or rebuild the frontend:
+
+```bash
+cd frontend
+npm install
+npm run build        # production build → output to static/ng/
+npm start            # dev server at http://localhost:4200
+```
 
 ---
 
 ## Docker
 
-No Python or pip install needed — just Docker Desktop.
-
 ```bash
-git clone https://github.com/bops19/UoE_ELM_plus.git
-cd UoE_ELM_plus
-cp .env.example .env   # add your OPENAI_API_KEY and API_KEY
-docker compose up
+# Build and run (builds frontend automatically)
+docker compose up --build
+
+# Or build the image directly
+docker build -t elmplus .
+docker run -p 5000:5000 --env-file .env elmplus
 ```
 
-Open **http://localhost:9595** in your browser.
+The container runs on port **5000**.
 
 ---
 
@@ -131,13 +118,7 @@ See `.env.example` for the full list with defaults.
 
 ## Runtime Data
 
-Runtime files (database, uploads, logs) are stored in a user profile directory — **not** inside the repo folder. The location depends on your OS:
-
-| OS | Default path |
-|---|---|
-| **macOS** | `~/Library/Application Support/elmplus/runtime/` |
-| **Windows** | `%APPDATA%\elmplus\runtime\` |
-| **Linux** | `~/.local/share/elmplus/runtime/` |
+All runtime state is written to `runtime/` (gitignored):
 
 ```
 runtime/
@@ -147,12 +128,6 @@ runtime/
 └── token_usage_log.jsonl  # Token usage audit log
 ```
 
-To override the location, set `ELMPLUS_RUNTIME_DIR` in your `.env`:
-
-```
-ELMPLUS_RUNTIME_DIR=/path/to/your/runtime
-```
-
 ---
 
 ## Project Structure
@@ -160,10 +135,12 @@ ELMPLUS_RUNTIME_DIR=/path/to/your/runtime
 ```
 .
 ├── app.py                  # Flask app factory + route wiring
-├── run.py                  # Dev server entry point
 ├── handlers/               # Request handlers (chat, voice, image, …)
 ├── routes/                 # Flask blueprints
-├── static/ng/              # Pre-built Angular frontend (no build step needed)
+├── frontend/               # Angular 21 workspace
+│   └── src/app/
+│       ├── core/           # API client, interceptors
+│       └── pages/          # Shell page and feature components
 ├── tests/                  # Backend test suite
 ├── Dockerfile
 └── docker-compose.yml
@@ -174,7 +151,13 @@ ELMPLUS_RUNTIME_DIR=/path/to/your/runtime
 ## Running Tests
 
 ```bash
+# Backend
 python -m pytest tests/ -v
+
+# Frontend
+cd frontend
+npm run test
+npm run e2e        # Playwright end-to-end
 ```
 
 ---

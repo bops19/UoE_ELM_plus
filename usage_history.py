@@ -38,6 +38,15 @@ def empty_token_history_scope() -> dict:
     }
 
 
+def _format_cost(value: float | int | None) -> str:
+    amount = float(value or 0.0)
+    if amount == 0:
+        return "$0.000000"
+    if amount < 0.000001:
+        return "< $0.000001"
+    return f"${amount:.6f}"
+
+
 def normalize_usage(usage: dict | None) -> dict:
     usage = usage or {}
     input_tokens = int(usage.get("input") or 0)
@@ -178,6 +187,128 @@ def token_history_scope(
     }
 
 
+def _scope_time_window(scope: str, date_value: str | None = None) -> tuple[int | None, int | None]:
+    key = str(scope or "").strip().lower()
+    if key == "today":
+        start_ms, end_ms, _ = local_day_bounds_ms(date_value)
+        return start_ms, end_ms
+    if key == "week":
+        return rolling_window_bounds_ms(7, date_value)
+    if key == "month":
+        return rolling_window_bounds_ms(30, date_value)
+    return None, None
+
+
+def model_usage_breakdown(
+    conn: sqlite3.Connection,
+    scope: str,
+    model: str,
+    session_id: str | None = None,
+    date_value: str | None = None,
+) -> dict:
+    scope_key = str(scope or "").strip().lower()
+    if scope_key not in {"session", "today", "week", "month", "all_time"}:
+        raise ValueError("invalid_scope")
+
+    model_key = str(model or "").strip()
+    if not model_key:
+        raise ValueError("missing_model")
+
+    scoped_session_id = str(session_id or "").strip() or None
+    if scope_key == "session":
+        if not scoped_session_id:
+            raise ValueError("session_required")
+        start_ms = None
+        end_ms = None
+    else:
+        start_ms, end_ms = _scope_time_window(scope_key, date_value)
+
+    query = """
+        SELECT m.id, m.session_id, m.usage_json, m.usage_model, m.usage_cost, m.created_at
+        FROM messages m
+        WHERE m.status = 'complete'
+          AND m.usage_json IS NOT NULL
+    """
+    params: list[object] = []
+    if scoped_session_id:
+        query += " AND m.session_id = ?"
+        params.append(scoped_session_id)
+    if start_ms is not None:
+        query += " AND m.created_at >= ?"
+        params.append(start_ms)
+    if end_ms is not None:
+        query += " AND m.created_at < ?"
+        params.append(end_ms)
+    query += " ORDER BY m.created_at ASC, m.id ASC"
+
+    totals = {
+        **empty_usage(),
+        "cost": 0.0,
+    }
+    buckets_by_label: dict[str, dict] = {}
+
+    for row in conn.execute(query, tuple(params)).fetchall():
+        usage = _json_loads(row["usage_json"], default={}) or {}
+        if not usage:
+            continue
+
+        row_model = (row["usage_model"] or "").strip() or "(unattributed)"
+        if row_model != model_key:
+            continue
+
+        normalized_usage = normalize_usage(usage)
+        stored_cost = row["usage_cost"]
+        cost = float(stored_cost) if stored_cost is not None else usage_cost(normalized_usage, row["usage_model"])
+        created_at = int(row["created_at"] or 0)
+        local_dt = datetime.datetime.fromtimestamp(created_at / 1000, tz=datetime.datetime.now().astimezone().tzinfo)
+        if scope_key in {"session", "today"}:
+            bucket_label = local_dt.strftime("%Y-%m-%d %H:00")
+        else:
+            bucket_label = local_dt.strftime("%Y-%m-%d")
+
+        bucket = buckets_by_label.setdefault(
+            bucket_label,
+            {
+                "timestampLabel": bucket_label,
+                "input": 0,
+                "cachedInput": 0,
+                "output": 0,
+                "total": 0,
+                "reasoning": 0,
+                "cost": 0.0,
+                "messageCount": 0,
+            },
+        )
+        bucket["input"] += normalized_usage["input"]
+        bucket["cachedInput"] += normalized_usage["cachedInput"]
+        bucket["output"] += normalized_usage["output"]
+        bucket["total"] += normalized_usage["total"]
+        bucket["reasoning"] += normalized_usage["reasoning"]
+        bucket["cost"] += cost
+        bucket["messageCount"] += 1
+
+        totals["input"] += normalized_usage["input"]
+        totals["cachedInput"] += normalized_usage["cachedInput"]
+        totals["output"] += normalized_usage["output"]
+        totals["total"] += normalized_usage["total"]
+        totals["reasoning"] += normalized_usage["reasoning"]
+        totals["cost"] += cost
+
+    buckets = sorted(buckets_by_label.values(), key=lambda item: item["timestampLabel"])
+    for item in buckets:
+        item["costDisplay"] = _format_cost(item.get("cost"))
+
+    return {
+        "scope": scope_key,
+        "model": model_key,
+        "totals": {
+            **totals,
+            "costDisplay": _format_cost(totals["cost"]),
+        },
+        "buckets": buckets,
+    }
+
+
 def local_day_bounds_ms(date_value: str | None = None) -> tuple[int, int, str]:
     if date_value:
         day = datetime.date.fromisoformat(date_value)
@@ -192,14 +323,31 @@ def local_day_bounds_ms(date_value: str | None = None) -> tuple[int, int, str]:
     )
 
 
+def rolling_window_bounds_ms(days: int, date_value: str | None = None) -> tuple[int, int]:
+    if date_value:
+        anchor_day = datetime.date.fromisoformat(date_value)
+        end_local = datetime.datetime.combine(anchor_day + datetime.timedelta(days=1), datetime.time.min).astimezone()
+    else:
+        end_local = datetime.datetime.now().astimezone()
+    start_local = end_local - datetime.timedelta(days=max(1, int(days)))
+    return (
+        int(start_local.timestamp() * 1000),
+        int(end_local.timestamp() * 1000),
+    )
+
+
 def build_usage_history_payload(
     conn: sqlite3.Connection,
     session_id: str | None = None,
     date_value: str | None = None,
 ) -> dict:
     day_start_ms, day_end_ms, day_key = local_day_bounds_ms(date_value)
+    week_start_ms, week_end_ms = rolling_window_bounds_ms(7, date_value)
+    month_start_ms, month_end_ms = rolling_window_bounds_ms(30, date_value)
     active_session = token_history_scope(conn, session_id=session_id) if session_id else empty_token_history_scope()
     today = token_history_scope(conn, start_ms=day_start_ms, end_ms=day_end_ms)
+    week = token_history_scope(conn, start_ms=week_start_ms, end_ms=week_end_ms)
+    month = token_history_scope(conn, start_ms=month_start_ms, end_ms=month_end_ms)
     all_time = token_history_scope(conn)
     return {
         "activeSession": active_session,
@@ -207,5 +355,7 @@ def build_usage_history_payload(
             **today,
             "date": day_key,
         },
+        "week": week,
+        "month": month,
         "allTime": all_time,
     }

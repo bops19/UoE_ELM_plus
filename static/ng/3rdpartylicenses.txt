@@ -78,6 +78,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 --------------------------------------------------------------------------------
+Package: highcharts
+License: "https://www.highcharts.com/license"
+
+Use of this software is governed by the Highsoft Standard License Agreement
+found at:
+
+https://www.highcharts.com/license
+
+By installing or using this software, you agree to these terms.
+
+--------------------------------------------------------------------------------
 Package: @angular/forms
 License: "MIT"
 
