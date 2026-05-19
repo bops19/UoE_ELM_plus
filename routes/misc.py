@@ -34,6 +34,11 @@ def get_usage_history_route():
     return get_route_handler("get_usage_history")()
 
 
+@misc_bp.route("/usage/model-breakdown", methods=["GET"])
+def get_usage_model_breakdown_route():
+    return get_route_handler("get_usage_model_breakdown")()
+
+
 @misc_bp.route("/prompt-presets", methods=["GET"])
 def get_prompt_presets_route():
     return get_route_handler("get_prompt_presets")()

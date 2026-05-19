@@ -3,9 +3,16 @@
 import json
 import time
 
+import openai
 from flask import Response, stream_with_context
 
-from model_catalog import model_supports_reasoning_effort, model_uses_responses_api
+from model_catalog import (
+    model_supports_flex_service_tier,
+    model_supports_priority_service_tier,
+    model_supports_reasoning_effort,
+    model_uses_responses_api,
+    normalize_service_tier,
+)
 from session_store import (
     ensure_session,
     insert_message,
@@ -32,6 +39,7 @@ from handler_dependencies import (
     _normalize_deep_research_tools_selection,
     _normalize_include_web_search,
     _now_ms,
+    OPENAI_TIMEOUT_SEC,
     _openai_client,
     _prepare_context,
     _preview_for_log,
@@ -61,6 +69,7 @@ def chat():
             "includeWebSearch",
             "deepResearchTools",
             "deepResearchMcpProfileId",
+            "serviceTier",
         },
         required_keys={"sessionId", "userText"},
     )
@@ -81,6 +90,29 @@ def chat():
     include_web_search, include_web_search_error = _normalize_include_web_search(data.get("includeWebSearch"))
     if include_web_search_error:
         return _error_response(include_web_search_error, 400, "include_web_search_invalid")
+    raw_service_tier = str(data.get("serviceTier") or "").strip().lower()
+    service_tier = None
+    if raw_service_tier:
+        normalized_service_tier = normalize_service_tier(raw_service_tier)
+        if normalized_service_tier != raw_service_tier:
+            return _error_response(
+                "serviceTier must be one of: 'default', 'flex', 'priority'.",
+                400,
+                "service_tier_invalid",
+            )
+        if raw_service_tier == "priority" and not model_supports_priority_service_tier(model):
+            return _error_response(
+                f"serviceTier='priority' is not supported for model '{model}'.",
+                400,
+                "service_tier_model_not_supported",
+            )
+        if raw_service_tier == "flex" and not model_supports_flex_service_tier(model):
+            return _error_response(
+                f"serviceTier='flex' is not supported for model '{model}'.",
+                400,
+                "service_tier_model_not_supported",
+            )
+        service_tier = raw_service_tier
     if include_web_search and use_case not in {"general", "reasoning"}:
         return _error_response(
             "includeWebSearch is supported only for general and reasoning use cases.",
@@ -164,6 +196,8 @@ def chat():
     log("💬", "NEW MESSAGE", f"(turn {turn})")
     log("🤖", "MODEL      ", model)
     log("🧠", "THINKING   ", effort or "none")
+    if service_tier:
+        log("⚙️ ", "SERVICE    ", service_tier)
     log("🔀", "API ROUTE  ", "Responses API" if use_responses_api else "Chat Completions")
     if use_case == "deep" and deep_research_tools:
         log(
@@ -193,325 +227,400 @@ def chat():
         log("📎", "FILES      ", f"{len(attachments)} active attachment(s) included")
     log("📡", "STREAMING  ", "started...")
     print("─" * 60, flush=True)
+    assistant_control_payload = {
+        "useCase": use_case,
+        "model": model,
+        "processingMode": (
+            "flex" if service_tier == "flex"
+            else "priority" if service_tier == "priority"
+            else "standard"
+        ),
+        "serviceTier": service_tier or "default",
+        "thinking": effort or "none",
+        "includeWebSearch": include_web_search is True,
+    }
+    chat_timeout_sec = max(float(OPENAI_TIMEOUT_SEC or 0.0), 600.0)
+    max_stream_retries = 1
 
     def generate():
-        full_reply = ""
-        chunk_count = 0
-        usage = None
-        stream = None
-        estimated_output_tokens = 0
-        last_progress_emit = 0.0
-        last_reasoning_emit = 0.0
-        started_at = time.monotonic()
-        stream_started = False
-        stage_reasoning_lines: list[str] = []
-        reasoning_trace_lines: list[str] = []
-        official_reasoning_summary = ""
-        latest_reasoning = ""
-        reasoning_status = "pending"
-        reasoning_emit_interval = 0.6
-        reasoning_chunk_interval = 12
+        attempt = 0
+        while True:
+            full_reply = ""
+            chunk_count = 0
+            usage = None
+            stream = None
+            estimated_output_tokens = 0
+            last_progress_emit = 0.0
+            last_reasoning_emit = 0.0
+            last_heartbeat_emit = 0.0
+            started_at = time.monotonic()
+            stream_started = False
+            stage_reasoning_lines: list[str] = []
+            reasoning_trace_lines: list[str] = []
+            official_reasoning_summary = ""
+            latest_reasoning = ""
+            reasoning_status = "pending"
+            reasoning_emit_interval = 0.6
+            reasoning_chunk_interval = 12
+            heartbeat_interval_sec = 12.0
 
-        def process_event(stage: str, status: str, detail: str | None = None):
-            payload = {
-                "process": {
-                    "stage": stage,
-                    "status": status,
+            def process_event(stage: str, status: str, detail: str | None = None):
+                payload = {"process": {"stage": stage, "status": status}}
+                if detail:
+                    payload["process"]["detail"] = detail
+                return f"data: {json.dumps(payload)}\n\n"
+
+            def heartbeat_event(force=False):
+                nonlocal last_heartbeat_emit
+                now = time.monotonic()
+                if not force and (now - last_heartbeat_emit) < heartbeat_interval_sec:
+                    return None
+                last_heartbeat_emit = now
+                payload = {"heartbeat": True, "ts": _now_ms(), "attempt": attempt + 1, "streaming": stream_started}
+                return f"data: {json.dumps(payload)}\n\n"
+
+            def reasoning_event(status: str | None = None, force=False):
+                nonlocal last_reasoning_emit, latest_reasoning, reasoning_status
+                now = time.monotonic()
+                if not force and (now - last_reasoning_emit) < reasoning_emit_interval:
+                    return None
+                last_reasoning_emit = now
+                reasoning_status = status or ("streaming" if stream_started else "pending")
+                if official_reasoning_summary.strip():
+                    latest_reasoning = official_reasoning_summary.strip()
+                elif reasoning_trace_lines:
+                    latest_reasoning = "\n".join(reasoning_trace_lines[-6:])
+                payload = {"reasoning": {"summary": latest_reasoning or "Live reasoning will appear here as the draft takes shape.", "status": reasoning_status}}
+                return f"data: {json.dumps(payload)}\n\n"
+
+            def push_reasoning_line(stage: str, status: str, detail: str | None = None, force=False):
+                line = _reasoning_stage_line(stage, status, detail)
+                if not stage_reasoning_lines or stage_reasoning_lines[-1] != line:
+                    stage_reasoning_lines.append(line)
+                return reasoning_event(force=force)
+
+            def push_fallback_reasoning_trace(force=False):
+                nonlocal latest_reasoning
+                snapshot = full_reply.strip()
+                if not snapshot:
+                    return None
+                recent_line = snapshot.splitlines()[-1][:180]
+                line = f"- Refining latest draft segment: \"{recent_line}\""
+                if not reasoning_trace_lines or reasoning_trace_lines[-1] != line:
+                    reasoning_trace_lines.append(line)
+                    latest_reasoning = "\n".join(reasoning_trace_lines[-6:])
+                return reasoning_event(status="streaming", force=force)
+
+            def progress_event(force=False):
+                nonlocal last_progress_emit, estimated_output_tokens
+                now = time.monotonic()
+                if not force and (now - last_progress_emit) < 0.5:
+                    return None
+                last_progress_emit = now
+                payload = {
+                    "progress": {
+                        "input": estimated_input_tokens,
+                        "output": estimated_output_tokens,
+                        "total": estimated_input_tokens + estimated_output_tokens,
+                        "estimated": True,
+                    }
                 }
-            }
-            if detail:
-                payload["process"]["detail"] = detail
-            return f"data: {json.dumps(payload)}\n\n"
+                return f"data: {json.dumps(payload)}\n\n"
 
-        def reasoning_event(status: str | None = None, force=False):
-            nonlocal last_reasoning_emit, latest_reasoning, reasoning_status
-            now = time.monotonic()
-            if not force and (now - last_reasoning_emit) < reasoning_emit_interval:
-                return None
-            last_reasoning_emit = now
-            reasoning_status = status or ("streaming" if stream_started else "pending")
-            if official_reasoning_summary.strip():
-                latest_reasoning = official_reasoning_summary.strip()
-            elif reasoning_trace_lines:
-                latest_reasoning = "\n".join(reasoning_trace_lines[-6:])
-            payload = {
-                "reasoning": {
-                    "summary": latest_reasoning or "Live reasoning will appear here as the draft takes shape.",
-                    "status": reasoning_status,
-                }
-            }
-            return f"data: {json.dumps(payload)}\n\n"
+            try:
+                yield process_event("context_build", "done", "Context prepared")
+                reasoning_update = push_reasoning_line("context_build", "done", "Context prepared", force=True)
+                if reasoning_update:
+                    yield reasoning_update
+                heartbeat = heartbeat_event(force=True)
+                if heartbeat:
+                    yield heartbeat
+                yield process_event(
+                    "attachment_prep",
+                    "done",
+                    f"{len(attachments)} active attachment(s)" if attachments else "No active attachments",
+                )
+                reasoning_update = push_reasoning_line(
+                    "attachment_prep",
+                    "done",
+                    f"{len(attachments)} active attachment(s)" if attachments else "No active attachments",
+                    force=True,
+                )
+                if reasoning_update:
+                    yield reasoning_update
+                yield process_event("model_generating", "active", "Generating first tokens")
+                reasoning_update = push_reasoning_line("model_generating", "active", "Generating first tokens", force=True)
+                if reasoning_update:
+                    yield reasoning_update
+                initial_progress = progress_event(force=True)
+                if initial_progress:
+                    yield initial_progress
 
-        def push_reasoning_line(stage: str, status: str, detail: str | None = None, force=False):
-            line = _reasoning_stage_line(stage, status, detail)
-            if not stage_reasoning_lines or stage_reasoning_lines[-1] != line:
-                stage_reasoning_lines.append(line)
-            return reasoning_event(force=force)
-
-        def push_fallback_reasoning_trace(force=False):
-            nonlocal latest_reasoning
-            snapshot = full_reply.strip()
-            if not snapshot:
-                return None
-            recent_line = snapshot.splitlines()[-1][:180]
-            line = f"- Refining latest draft segment: \"{recent_line}\""
-            if not reasoning_trace_lines or reasoning_trace_lines[-1] != line:
-                reasoning_trace_lines.append(line)
-                latest_reasoning = "\n".join(reasoning_trace_lines[-6:])
-            return reasoning_event(status="streaming", force=force)
-
-        def progress_event(force=False):
-            nonlocal last_progress_emit, estimated_output_tokens
-            now = time.monotonic()
-            if not force and (now - last_progress_emit) < 0.5:
-                return None
-            last_progress_emit = now
-            payload = {
-                "progress": {
-                    "input": estimated_input_tokens,
-                    "output": estimated_output_tokens,
-                    "total": estimated_input_tokens + estimated_output_tokens,
-                    "estimated": True,
-                }
-            }
-            return f"data: {json.dumps(payload)}\n\n"
-
-        try:
-            yield process_event("context_build", "done", "Context prepared")
-            reasoning_update = push_reasoning_line("context_build", "done", "Context prepared", force=True)
-            if reasoning_update:
-                yield reasoning_update
-            yield process_event(
-                "attachment_prep",
-                "done" if attachments else "done",
-                f"{len(attachments)} active attachment(s)" if attachments else "No active attachments",
-            )
-            reasoning_update = push_reasoning_line(
-                "attachment_prep",
-                "done",
-                f"{len(attachments)} active attachment(s)" if attachments else "No active attachments",
-                force=True,
-            )
-            if reasoning_update:
-                yield reasoning_update
-            yield process_event("model_generating", "active", "Generating first tokens")
-            reasoning_update = push_reasoning_line("model_generating", "active", "Generating first tokens", force=True)
-            if reasoning_update:
-                yield reasoning_update
-            initial_progress = progress_event(force=True)
-            if initial_progress:
-                yield initial_progress
-
-            if use_responses_api:
-                input_messages = [_context_message_payload(message) for message in prior_messages]
-                input_messages.append({"role": "user", "content": user_content})
-                reasoning_config = {"summary": "detailed"}
-                if effort:
-                    reasoning_config["effort"] = effort
-                    log("🧪", "REASONING  ", f"effort={effort} applied")
-                kwargs = {
-                    "model": model,
-                    "input": input_messages,
-                    "instructions": _system_prompt(summary_text, preset_instructions, preset_context, custom_prompt, custom_context),
-                    "stream": True,
-                    "store": False,
-                    "reasoning": reasoning_config,
-                }
-                if use_case == "deep" and deep_research_tools:
-                    kwargs["tools"] = deep_research_tools
-                elif chat_web_tools:
-                    kwargs["tools"] = chat_web_tools
-
-                stream = _openai_client().responses.create(**kwargs)
-                for event in stream:
-                    if event.type == "response.output_text.delta":
-                        if not stream_started:
-                            stream_started = True
-                            yield process_event("model_generating", "done", "First token received")
-                            yield process_event("streaming_response", "active", "Streaming response")
-                            reasoning_update = push_reasoning_line("model_generating", "done", "First token received", force=True)
-                            if reasoning_update:
-                                yield reasoning_update
-                            reasoning_update = push_reasoning_line("streaming_response", "active", "Streaming response", force=True)
-                            if reasoning_update:
-                                yield reasoning_update
-                        chunk = event.delta
-                        full_reply += chunk
-                        chunk_count += 1
-                        yield f"data: {json.dumps({'content': chunk})}\n\n"
-                        estimated_output_tokens = max(estimated_output_tokens, _estimate_text_tokens(full_reply))
-                        progress = progress_event()
-                        if progress:
-                            yield progress
-                    elif event.type == "response.reasoning_summary_text.delta":
-                        delta = getattr(event, "delta", "") or ""
-                        if delta:
-                            official_reasoning_summary += delta
-                            latest_reasoning = official_reasoning_summary.strip()
-                            reasoning_update = reasoning_event(status="streaming", force=True)
-                            if reasoning_update:
-                                yield reasoning_update
-                    elif event.type == "response.completed":
-                        usage = event.response.usage
-            else:
-                messages = [{"role": "system", "content": _system_prompt(summary_text, preset_instructions, preset_context, custom_prompt, custom_context)}]
-                messages.extend(_context_message_payload(message) for message in prior_messages)
-                messages.append({"role": "user", "content": user_content})
-                kwargs = {
-                    "model": model,
-                    "messages": messages,
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
-                }
-                if model_supports_reasoning_effort(model) and effort:
-                    kwargs["reasoning_effort"] = effort
-                    log("🧪", "REASONING  ", f"effort={effort} applied")
-                elif model_supports_reasoning_effort(model):
-                    log("🧪", "REASONING  ", "disabled (none selected)")
+                if use_responses_api:
+                    input_messages = [_context_message_payload(message) for message in prior_messages]
+                    input_messages.append({"role": "user", "content": user_content})
+                    reasoning_config = {"summary": "detailed"}
+                    if effort:
+                        reasoning_config["effort"] = effort
+                        log("🧪", "REASONING  ", f"effort={effort} applied")
+                    kwargs = {
+                        "model": model,
+                        "input": input_messages,
+                        "instructions": _system_prompt(summary_text, preset_instructions, preset_context, custom_prompt, custom_context),
+                        "stream": True,
+                        "store": False,
+                        "reasoning": reasoning_config,
+                    }
+                    if use_case == "deep" and deep_research_tools:
+                        kwargs["tools"] = deep_research_tools
+                    elif chat_web_tools:
+                        kwargs["tools"] = chat_web_tools
+                    if service_tier:
+                        kwargs["service_tier"] = service_tier
+                    stream_client = _openai_client().with_options(timeout=chat_timeout_sec)
+                    stream = stream_client.responses.create(**kwargs)
+                    for event in stream:
+                        heartbeat = heartbeat_event()
+                        if heartbeat:
+                            yield heartbeat
+                        if event.type == "response.output_text.delta":
+                            if not stream_started:
+                                stream_started = True
+                                yield process_event("model_generating", "done", "First token received")
+                                yield process_event("streaming_response", "active", "Streaming response")
+                                reasoning_update = push_reasoning_line("model_generating", "done", "First token received", force=True)
+                                if reasoning_update:
+                                    yield reasoning_update
+                                reasoning_update = push_reasoning_line("streaming_response", "active", "Streaming response", force=True)
+                                if reasoning_update:
+                                    yield reasoning_update
+                            chunk = event.delta
+                            full_reply += chunk
+                            chunk_count += 1
+                            yield f"data: {json.dumps({'content': chunk})}\n\n"
+                            estimated_output_tokens = max(estimated_output_tokens, _estimate_text_tokens(full_reply))
+                            progress = progress_event()
+                            if progress:
+                                yield progress
+                        elif event.type == "response.reasoning_summary_text.delta":
+                            delta = getattr(event, "delta", "") or ""
+                            if delta:
+                                official_reasoning_summary += delta
+                                latest_reasoning = official_reasoning_summary.strip()
+                                reasoning_update = reasoning_event(status="streaming", force=True)
+                                if reasoning_update:
+                                    yield reasoning_update
+                        elif event.type == "response.completed":
+                            usage = event.response.usage
                 else:
-                    log("⚠️ ", "REASONING  ", f"not supported for {model}, skipping")
+                    messages = [{"role": "system", "content": _system_prompt(summary_text, preset_instructions, preset_context, custom_prompt, custom_context)}]
+                    messages.extend(_context_message_payload(message) for message in prior_messages)
+                    messages.append({"role": "user", "content": user_content})
+                    kwargs = {"model": model, "messages": messages, "stream": True, "stream_options": {"include_usage": True}}
+                    if model_supports_reasoning_effort(model) and effort:
+                        kwargs["reasoning_effort"] = effort
+                        log("🧪", "REASONING  ", f"effort={effort} applied")
+                    elif model_supports_reasoning_effort(model):
+                        log("🧪", "REASONING  ", "disabled (none selected)")
+                    else:
+                        log("⚠️ ", "REASONING  ", f"not supported for {model}, skipping")
+                    if service_tier:
+                        kwargs["service_tier"] = service_tier
+                    stream_client = _openai_client().with_options(timeout=chat_timeout_sec)
+                    stream = stream_client.chat.completions.create(**kwargs)
+                    for chunk in stream:
+                        heartbeat = heartbeat_event()
+                        if heartbeat:
+                            yield heartbeat
+                        if chunk.usage:
+                            usage = chunk.usage
+                        if not chunk.choices:
+                            continue
+                        delta = chunk.choices[0].delta
+                        if delta.content:
+                            if not stream_started:
+                                stream_started = True
+                                yield process_event("model_generating", "done", "First token received")
+                                yield process_event("streaming_response", "active", "Streaming response")
+                                reasoning_update = push_reasoning_line("model_generating", "done", "First token received", force=True)
+                                if reasoning_update:
+                                    yield reasoning_update
+                                reasoning_update = push_reasoning_line("streaming_response", "active", "Streaming response", force=True)
+                                if reasoning_update:
+                                    yield reasoning_update
+                            full_reply += delta.content
+                            chunk_count += 1
+                            yield f"data: {json.dumps({'content': delta.content})}\n\n"
+                            estimated_output_tokens = max(estimated_output_tokens, _estimate_text_tokens(full_reply))
+                            progress = progress_event()
+                            if progress:
+                                yield progress
+                            if chunk_count % reasoning_chunk_interval == 0:
+                                reasoning_update = push_fallback_reasoning_trace(force=(chunk_count <= 2))
+                                if reasoning_update:
+                                    yield reasoning_update
 
-                stream = _openai_client().chat.completions.create(**kwargs)
-                for chunk in stream:
-                    if chunk.usage:
-                        usage = chunk.usage
-                    if not chunk.choices:
-                        continue
-                    delta = chunk.choices[0].delta
-                    if delta.content:
-                        if not stream_started:
-                            stream_started = True
-                            yield process_event("model_generating", "done", "First token received")
-                            yield process_event("streaming_response", "active", "Streaming response")
-                            reasoning_update = push_reasoning_line("model_generating", "done", "First token received", force=True)
-                            if reasoning_update:
-                                yield reasoning_update
-                            reasoning_update = push_reasoning_line("streaming_response", "active", "Streaming response", force=True)
-                            if reasoning_update:
-                                yield reasoning_update
-                        full_reply += delta.content
-                        chunk_count += 1
-                        yield f"data: {json.dumps({'content': delta.content})}\n\n"
-                        estimated_output_tokens = max(estimated_output_tokens, _estimate_text_tokens(full_reply))
-                        progress = progress_event()
-                        if progress:
-                            yield progress
-                        if chunk_count % reasoning_chunk_interval == 0:
-                            reasoning_update = push_fallback_reasoning_trace(force=(chunk_count <= 2))
-                            if reasoning_update:
-                                yield reasoning_update
+                estimated_output_tokens = max(estimated_output_tokens, _estimate_text_tokens(full_reply))
+                final_progress = progress_event(force=True)
+                if final_progress:
+                    yield final_progress
+                yield process_event("streaming_response", "done", "Streaming complete")
+                reasoning_update = push_reasoning_line("streaming_response", "done", "Streaming complete", force=True)
+                if reasoning_update:
+                    yield reasoning_update
+                yield process_event("finalizing_usage", "active", "Saving response + usage")
+                reasoning_update = push_reasoning_line("finalizing_usage", "active", "Saving response + usage", force=True)
+                if reasoning_update:
+                    yield reasoning_update
 
-            estimated_output_tokens = max(estimated_output_tokens, _estimate_text_tokens(full_reply))
-            final_progress = progress_event(force=True)
-            if final_progress:
-                yield final_progress
-            yield process_event("streaming_response", "done", "Streaming complete")
-            reasoning_update = push_reasoning_line("streaming_response", "done", "Streaming complete", force=True)
-            if reasoning_update:
-                yield reasoning_update
-            yield process_event("finalizing_usage", "active", "Saving response + usage")
-            reasoning_update = push_reasoning_line("finalizing_usage", "active", "Saving response + usage", force=True)
-            if reasoning_update:
-                yield reasoning_update
+                usage_data = _usage_payload(usage, responses_api=use_responses_api) if usage else None
+                response_cost = usage_cost(usage_data, model, service_tier=service_tier) if usage_data else None
+                elapsed_sec = max(0.0, time.monotonic() - started_at)
+                reasoning_summary = official_reasoning_summary.strip() or latest_reasoning or "\n".join(reasoning_trace_lines[-6:]) or "Reasoning trace unavailable for this turn."
+                reasoning_status = "complete" if reasoning_summary else "unavailable"
+                with _db() as conn:
+                    update_message(
+                        conn,
+                        assistant_message_id,
+                        content=full_reply,
+                        payload={"control": assistant_control_payload},
+                        usage=usage_data,
+                        usage_model=model,
+                        usage_cost=response_cost,
+                        elapsed_sec=elapsed_sec,
+                        reasoning_summary=reasoning_summary,
+                        reasoning_status=reasoning_status,
+                        status="complete",
+                    )
+                    conn.commit()
+                    active_session_usage = token_history_scope(conn, session_id=session_id)
 
-            usage_data = _usage_payload(usage, responses_api=use_responses_api) if usage else None
-            response_cost = usage_cost(usage_data, model) if usage_data else None
-            elapsed_sec = max(0.0, time.monotonic() - started_at)
-            reasoning_summary = official_reasoning_summary.strip() or latest_reasoning or "\n".join(reasoning_trace_lines[-6:]) or "Reasoning trace unavailable for this turn."
-            reasoning_status = "complete" if reasoning_summary else "unavailable"
-            with _db() as conn:
-                update_message(
-                    conn,
-                    assistant_message_id,
-                    content=full_reply,
-                    usage=usage_data,
-                    usage_model=model,
-                    usage_cost=response_cost,
-                    elapsed_sec=elapsed_sec,
-                    reasoning_summary=reasoning_summary,
-                    reasoning_status=reasoning_status,
-                    status="complete",
+                if usage_data and response_cost is not None:
+                    _append_token_usage_log({
+                        "timestamp": _now_ms(),
+                        "sessionId": session_id,
+                        "assistantMessageId": assistant_message_id,
+                        "useCase": use_case,
+                        "model": model,
+                        "usage": usage_data,
+                        "cost": response_cost,
+                        "elapsedSec": elapsed_sec,
+                    })
+                with _db() as conn:
+                    usage_view = build_usage_view(conn, session_id=session_id, voice_mode="")
+
+                yield process_event("finalizing_usage", "done", "Response saved")
+                reasoning_update = push_reasoning_line("finalizing_usage", "done", "Response saved", force=True)
+                if reasoning_update:
+                    yield reasoning_update
+                yield process_event("completed", "done", "Response ready")
+                reasoning_update = push_reasoning_line("completed", "done", "Response ready", force=True)
+                if reasoning_update:
+                    yield reasoning_update
+                yield f"data: {json.dumps({'reasoning': {'summary': reasoning_summary, 'status': reasoning_status}})}\n\n"
+                if usage_data:
+                    yield f"data: {json.dumps({'usage': usage_data})}\n\n"
+                    yield f"data: {json.dumps({'usageView': usage_view})}\n\n"
+                yield "data: [DONE]\n\n"
+                divider()
+                log("✅", "DONE       ", f"{chunk_count} chunks streamed")
+                log(
+                    "🔢", "USAGE      ",
+                    (
+                        f"in={usage_data['input']} out={usage_data['output']} total={usage_data['total']} "
+                        f"reasoning={usage_data['reasoning']} cached_in={int(usage_data.get('cachedInput') or 0)} "
+                        f"(cached_text={int((usage_data.get('details') or {}).get('inputCachedText') or 0)} "
+                        f"cached_audio={int((usage_data.get('details') or {}).get('inputCachedAudio') or 0)} "
+                        f"cached_image={int((usage_data.get('details') or {}).get('inputCachedImage') or 0)})"
+                    )
+                    if usage_data else "usage=unavailable",
                 )
-                conn.commit()
-                active_session_usage = token_history_scope(conn, session_id=session_id)
+                log("💡", "GPT SAYS   ", f'"{full_reply[:80]}{"..." if len(full_reply) > 80 else ""}"')
+                print("─" * 60, flush=True)
+                print(flush=True)
+                return
+            except GeneratorExit:
+                if stream is not None and hasattr(stream, "close"):
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
+                elapsed_sec = max(0.0, time.monotonic() - started_at)
+                with _db() as conn:
+                    update_message(
+                        conn,
+                        assistant_message_id,
+                        content=full_reply or "[Response interrupted]",
+                        elapsed_sec=elapsed_sec,
+                        reasoning_summary=latest_reasoning or "Reasoning trace unavailable for interrupted response.",
+                        reasoning_status="unavailable",
+                        status="interrupted",
+                    )
+                    conn.commit()
+                raise
+            except Exception as exc:
+                if stream is not None and hasattr(stream, "close"):
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
+                elapsed_sec = max(0.0, time.monotonic() - started_at)
 
-            if usage_data and response_cost is not None:
-                _append_token_usage_log({
-                    "timestamp": _now_ms(),
-                    "sessionId": session_id,
-                    "assistantMessageId": assistant_message_id,
-                    "useCase": use_case,
-                    "model": model,
-                    "usage": usage_data,
-                    "cost": response_cost,
-                    "elapsedSec": elapsed_sec,
-                })
-            with _db() as conn:
-                usage_view = build_usage_view(conn, session_id=session_id, voice_mode="")
+                lower_error = str(exc).lower()
+                is_overload = isinstance(exc, (openai.RateLimitError, openai.APIStatusError)) and (
+                    getattr(exc, "status_code", None) in (429, 529)
+                    or "too many requests" in lower_error
+                    or "overloaded" in lower_error
+                )
+                is_idle_or_timeout = (
+                    isinstance(exc, (openai.APITimeoutError, openai.APIConnectionError, TimeoutError))
+                    or "timeout" in lower_error
+                    or "timed out" in lower_error
+                    or "read timeout" in lower_error
+                )
+                can_retry = (
+                    is_idle_or_timeout
+                    and attempt < max_stream_retries
+                    and chunk_count == 0
+                    and not full_reply.strip()
+                )
+                if can_retry:
+                    attempt += 1
+                    _security_log("CHAT RETRY ", f"idle/timeout before first token; retrying attempt={attempt + 1}")
+                    yield process_event("model_generating", "active", "Upstream stream idle, retrying once")
+                    heartbeat = heartbeat_event(force=True)
+                    if heartbeat:
+                        yield heartbeat
+                    continue
 
-            yield process_event("finalizing_usage", "done", "Response saved")
-            reasoning_update = push_reasoning_line("finalizing_usage", "done", "Response saved", force=True)
-            if reasoning_update:
-                yield reasoning_update
-            yield process_event("completed", "done", "Response ready")
-            reasoning_update = push_reasoning_line("completed", "done", "Response ready", force=True)
-            if reasoning_update:
-                yield reasoning_update
-            yield f"data: {json.dumps({'reasoning': {'summary': reasoning_summary, 'status': reasoning_status}})}\n\n"
-            if usage_data:
-                yield f"data: {json.dumps({'usage': usage_data})}\n\n"
-                yield f"data: {json.dumps({'usageView': usage_view})}\n\n"
-            yield "data: [DONE]\n\n"
-            divider()
-            log("✅", "DONE       ", f"{chunk_count} chunks streamed")
-            log(
-                "🔢", "USAGE      ",
-                f"in={usage_data['input']} out={usage_data['output']} total={usage_data['total']} reasoning={usage_data['reasoning']}"
-                if usage_data else "usage=unavailable",
-            )
-            log("💡", "GPT SAYS   ", f'"{full_reply[:80]}{"..." if len(full_reply) > 80 else ""}"')
-            print("─" * 60, flush=True)
-            print(flush=True)
-        except GeneratorExit:
-            if stream is not None and hasattr(stream, "close"):
-                try:
-                    stream.close()
-                except Exception:
-                    pass
-            elapsed_sec = max(0.0, time.monotonic() - started_at)
-            with _db() as conn:
-                update_message(
-                    conn,
-                    assistant_message_id,
-                    content=full_reply or "[Response interrupted]",
-                    elapsed_sec=elapsed_sec,
-                    reasoning_summary=latest_reasoning or "Reasoning trace unavailable for interrupted response.",
-                    reasoning_status="unavailable",
-                    status="interrupted",
-                )
-                conn.commit()
-            raise
-        except Exception as exc:
-            if stream is not None and hasattr(stream, "close"):
-                try:
-                    stream.close()
-                except Exception:
-                    pass
-            elapsed_sec = max(0.0, time.monotonic() - started_at)
-            with _db() as conn:
-                update_message(
-                    conn,
-                    assistant_message_id,
-                    content=full_reply or "[Request failed. Please retry.]",
-                    elapsed_sec=elapsed_sec,
-                    reasoning_summary=latest_reasoning or "Reasoning trace unavailable because the request failed.",
-                    reasoning_status="error",
-                    status="error",
-                )
-                conn.commit()
-            _security_log("CHAT ERR   ", f"{type(exc).__name__}: {str(exc)[:300]}")
-            print("─" * 60, flush=True)
-            yield process_event("completed", "error", "Request failed")
-            yield f"data: {json.dumps({'error': 'Request failed. Please retry.', 'errorCode': 'chat_generation_failed', 'requestId': _request_id()})}\n\n"
+                if is_overload and service_tier == "flex":
+                    user_message = "Flex processing is currently overloaded — please try again in a few minutes, or switch to the Default tier."
+                    error_code = "flex_overloaded"
+                elif is_overload:
+                    user_message = "The API is currently overloaded — please try again in a few minutes."
+                    error_code = "api_overloaded"
+                elif is_idle_or_timeout:
+                    user_message = "The response stream timed out while the model was thinking. Please retry."
+                    error_code = "stream_timeout"
+                else:
+                    user_message = "Request failed. Please retry."
+                    error_code = "chat_generation_failed"
+
+                with _db() as conn:
+                    update_message(
+                        conn,
+                        assistant_message_id,
+                        content=full_reply or f"[{user_message}]",
+                        elapsed_sec=elapsed_sec,
+                        reasoning_summary=latest_reasoning or "Reasoning trace unavailable because the request failed.",
+                        reasoning_status="error",
+                        status="error",
+                    )
+                    conn.commit()
+                _security_log("CHAT ERR   ", f"{type(exc).__name__}: {str(exc)[:300]}")
+                print("─" * 60, flush=True)
+                yield process_event("completed", "error", "Request failed")
+                yield f"data: {json.dumps({'error': user_message, 'errorCode': error_code, 'requestId': _request_id()})}\n\n"
+                return
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")

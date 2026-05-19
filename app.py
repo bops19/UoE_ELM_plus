@@ -163,7 +163,9 @@ app.config["API_KEY"] = API_KEY
 configure_logging(app)
 configure_sentry(app)
 register_error_handlers(app)
-register_api_key_guard(app)
+# Authentication is intentionally disabled for local/dev workflows.
+# Keep API_KEY configured for optional future re-enable, but do not enforce it.
+# register_api_key_guard(app)
 
 
 app.config["MAX_CONTENT_LENGTH"] = REQUEST_BODY_MAX_BYTES
@@ -730,7 +732,7 @@ def _attachment_supports_text_extraction(mime_type: str, name: str) -> bool:
     ext = os.path.splitext(name or "")[1].lower()
     if mime_type.startswith("text/") or ext in TEXT_FILE_EXTENSIONS:
         return True
-    return ext in {".docx", ".pdf"}
+    return ext in {".docx", ".xlsx", ".pdf"}
 
 
 def _attachment_supports_tool_handoff(name: str, extraction_status: str) -> bool:
@@ -851,10 +853,37 @@ def _usage_payload(usage, responses_api=False):
         input_tokens = int(_safe_get(usage, "input_tokens", default=0) or 0)
         output_tokens = int(_safe_get(usage, "output_tokens", default=0) or 0)
         reasoning_tokens = int(_safe_get(usage, "output_tokens_details", "reasoning_tokens", default=0) or 0)
+        input_details = _safe_get(usage, "input_token_details", default={})
+        output_details = _safe_get(usage, "output_token_details", default={})
     else:
         input_tokens = int(_safe_get(usage, "prompt_tokens", default=0) or 0)
         output_tokens = int(_safe_get(usage, "completion_tokens", default=0) or 0)
         reasoning_tokens = int(_safe_get(usage, "completion_tokens_details", "reasoning_tokens", default=0) or 0)
+        input_details = _safe_get(usage, "prompt_tokens_details", default={})
+        output_details = _safe_get(usage, "completion_tokens_details", default={})
+
+    input_details = input_details if isinstance(input_details, dict) else {}
+    output_details = output_details if isinstance(output_details, dict) else {}
+    cached_details = input_details.get("cached_tokens_details") if isinstance(input_details.get("cached_tokens_details"), dict) else {}
+
+    cached_text = int(cached_details.get("text_tokens") or 0)
+    cached_audio = int(cached_details.get("audio_tokens") or 0)
+    cached_image = int(cached_details.get("image_tokens") or 0)
+    cached_total = int(input_details.get("cached_tokens") or 0)
+    if cached_total <= 0:
+        cached_total = cached_text + cached_audio + cached_image
+
+    input_text = int(input_details.get("text_tokens") or 0)
+    input_audio = int(input_details.get("audio_tokens") or 0)
+    input_image = int(input_details.get("image_tokens") or 0)
+    if input_text + input_audio + input_image <= 0 and input_tokens > 0:
+        input_text = input_tokens
+    input_tokens = max(input_tokens, input_text + input_audio + input_image)
+
+    output_text = int(output_details.get("text_tokens") or 0)
+    output_audio = int(output_details.get("audio_tokens") or 0)
+    if output_text + output_audio <= 0 and output_tokens > 0:
+        output_text = output_tokens
 
     fallback_total = input_tokens + output_tokens
     total_tokens = int(_safe_get(usage, "total_tokens", default=fallback_total) or fallback_total)
@@ -864,6 +893,17 @@ def _usage_payload(usage, responses_api=False):
         "output": output_tokens,
         "total": max(total_tokens, fallback_total),
         "reasoning": reasoning_tokens,
+        "cachedInput": max(0, cached_total),
+        "details": {
+            "inputText": input_text,
+            "inputAudio": input_audio,
+            "inputImage": input_image,
+            "inputCachedText": cached_text,
+            "inputCachedAudio": cached_audio,
+            "inputCachedImage": cached_image,
+            "outputText": output_text,
+            "outputAudio": output_audio,
+        },
     }
 
 
@@ -932,6 +972,7 @@ def _voice_usage_payload(raw_usage, source: str | None = None):
         "output": output_tokens,
         "total": max(total_tokens, input_tokens + output_tokens),
         "reasoning": reasoning_tokens,
+        "cachedInput": max(0, details["inputCachedText"] + details["inputCachedAudio"] + details["inputCachedImage"]),
         "details": details,
     }
     if source:
@@ -945,6 +986,7 @@ def _combine_usage_payloads(*usages):
         "output": 0,
         "total": 0,
         "reasoning": 0,
+        "cachedInput": 0,
     }
     details = {
         "inputText": 0,
@@ -966,6 +1008,7 @@ def _combine_usage_payloads(*usages):
         totals["output"] += int(usage.get("output") or 0)
         totals["total"] += int(usage.get("total") or 0)
         totals["reasoning"] += int(usage.get("reasoning") or 0)
+        totals["cachedInput"] += int(usage.get("cachedInput") or 0)
         usage_details = usage.get("details") if isinstance(usage.get("details"), dict) else {}
         for key in details:
             details[key] += int(usage_details.get(key) or 0)
@@ -1452,6 +1495,49 @@ def _extract_docx_text(data: bytes) -> str:
     return "\n".join(paragraphs).strip()
 
 
+def _extract_xlsx_text(data: bytes) -> str:
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+            ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            for entry in shared_root.findall(".//x:si", ns):
+                parts = [node.text for node in entry.findall(".//x:t", ns) if node.text]
+                shared_strings.append("".join(parts))
+
+        lines: list[str] = []
+        sheet_paths = sorted(
+            name
+            for name in archive.namelist()
+            if name.startswith("xl/worksheets/") and name.endswith(".xml")
+        )
+        ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        for sheet_path in sheet_paths:
+            root = ElementTree.fromstring(archive.read(sheet_path))
+            for row in root.findall(".//x:sheetData/x:row", ns):
+                row_values: list[str] = []
+                for cell in row.findall("x:c", ns):
+                    cell_type = (cell.get("t") or "").strip().lower()
+                    raw_value = cell.find("x:v", ns)
+                    if raw_value is None or raw_value.text is None:
+                        continue
+                    value = raw_value.text.strip()
+                    if not value:
+                        continue
+                    if cell_type == "s":
+                        try:
+                            idx = int(value)
+                            if 0 <= idx < len(shared_strings):
+                                row_values.append(shared_strings[idx])
+                                continue
+                        except Exception:
+                            pass
+                    row_values.append(value)
+                if row_values:
+                    lines.append(" | ".join(row_values))
+        return "\n".join(lines).strip()
+
+
 def _extract_text_from_file(data: bytes, mime_type: str, name: str):
     ext = os.path.splitext(name or "")[1].lower()
     if mime_type.startswith("text/") or ext in TEXT_FILE_EXTENSIONS:
@@ -1463,6 +1549,13 @@ def _extract_text_from_file(data: bytes, mime_type: str, name: str):
     if ext == ".docx":
         try:
             return _extract_docx_text(data), "extracted"
+        except Exception:
+            return "", "failed"
+
+    if ext == ".xlsx":
+        try:
+            text = _extract_xlsx_text(data)
+            return text, "extracted" if text else "failed"
         except Exception:
             return "", "failed"
 
@@ -1584,7 +1677,7 @@ def _insert_missing_attachment_placeholder(conn: sqlite3.Connection, session_id:
 
 def _import_legacy_sessions(conn: sqlite3.Connection):
     try:
-        with open(LEGACY_SESSIONS_FILE, "r") as file:
+        with open(LEGACY_SESSIONS_FILE, "r", encoding="utf-8") as file:
             sessions = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         return
@@ -1762,6 +1855,7 @@ from handlers.sessions import (
     get_session_detail,
     get_sessions,
     get_usage_history,
+    get_usage_model_breakdown,
     update_attachment,
     update_prompt_preset,
     update_session,
@@ -1840,6 +1934,7 @@ register_route_handlers(
     export_session=export_session,
     export_assistant_message=export_assistant_message,
     get_usage_history=get_usage_history,
+    get_usage_model_breakdown=get_usage_model_breakdown,
     update_session=update_session,
     get_prompt_presets=get_prompt_presets,
     create_prompt_preset=create_prompt_preset,

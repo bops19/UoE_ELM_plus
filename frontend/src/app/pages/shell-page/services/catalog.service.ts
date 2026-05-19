@@ -14,8 +14,12 @@ export class CatalogService {
 
   constructor(private readonly api: BackendApiService) {}
 
-  async loadCatalog(selectedModel?: string, voiceMode?: string): Promise<void> {
-    const cacheKey = `${selectedModel || ''}::${voiceMode || ''}`;
+  async loadCatalog(
+    selectedModel?: string,
+    voiceMode?: string,
+    processingMode?: 'standard' | 'priority' | 'flex',
+  ): Promise<void> {
+    const cacheKey = `${selectedModel || ''}::${voiceMode || ''}::${processingMode || ''}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       this.modelCatalog.set(cached.catalog);
@@ -25,7 +29,7 @@ export class CatalogService {
     this.loading.set(true);
     this.error.set('');
     try {
-      const payload = await firstValueFrom(this.api.getVmCatalog(selectedModel, voiceMode));
+      const payload = await firstValueFrom(this.api.getVmCatalog(selectedModel, voiceMode, processingMode));
       const catalog = payload?.catalog || null;
       const view = payload?.catalogView || null;
       this.modelCatalog.set(catalog);
@@ -38,11 +42,15 @@ export class CatalogService {
     }
   }
 
-  async refreshCatalogView(selectedModel?: string, voiceMode?: string): Promise<void> {
+  async refreshCatalogView(
+    selectedModel?: string,
+    voiceMode?: string,
+    processingMode?: 'standard' | 'priority' | 'flex',
+  ): Promise<void> {
     this.loading.set(true);
     this.error.set('');
     try {
-      const payload = await firstValueFrom(this.api.getVmCatalog(selectedModel, voiceMode));
+      const payload = await firstValueFrom(this.api.getVmCatalog(selectedModel, voiceMode, processingMode));
       const view = payload?.catalogView || null;
       this.catalogView.set(view);
       if (payload?.catalog) this.modelCatalog.set(payload.catalog);
@@ -63,9 +71,9 @@ export class CatalogService {
     }
   }
 
-  invalidate(selectedModel?: string, voiceMode?: string): void {
-    if (selectedModel || voiceMode) {
-      this.cache.delete(`${selectedModel || ''}::${voiceMode || ''}`);
+  invalidate(selectedModel?: string, voiceMode?: string, processingMode?: 'standard' | 'priority' | 'flex'): void {
+    if (selectedModel || voiceMode || processingMode) {
+      this.cache.delete(`${selectedModel || ''}::${voiceMode || ''}::${processingMode || ''}`);
       return;
     }
     this.cache.clear();

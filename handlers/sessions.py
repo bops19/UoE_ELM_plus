@@ -31,7 +31,7 @@ from session_store import (
     session_detail,
     session_selected_model,
 )
-from usage_history import build_usage_history_payload
+from usage_history import build_usage_history_payload, model_usage_breakdown
 from vm_service import build_session_view
 
 from handler_dependencies import (
@@ -174,6 +174,32 @@ def get_usage_history():
             return build_usage_history_payload(conn, session_id=session_id or None, date_value=date_value)
     except ValueError:
         return _error_response("invalid date", 400, "invalid_date")
+
+
+def get_usage_model_breakdown():
+    session_id = (request.args.get("sessionId") or "").strip() or None
+    date_value = (request.args.get("date") or "").strip() or None
+    scope = (request.args.get("scope") or "today").strip() or "today"
+    model = (request.args.get("model") or "").strip()
+
+    try:
+        with _db() as conn:
+            return model_usage_breakdown(
+                conn,
+                scope=scope,
+                model=model,
+                session_id=session_id,
+                date_value=date_value,
+            )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "missing_model":
+            return _error_response("model is required", 400, "missing_model")
+        if code == "session_required":
+            return _error_response("sessionId is required for scope=session", 400, "session_required")
+        if code == "invalid_scope":
+            return _error_response("invalid scope", 400, "invalid_scope")
+        return _error_response("invalid request", 400, "invalid_request")
 
 
 def update_session(session_id):

@@ -203,51 +203,53 @@
                 <i class="bi" [class.bi-chevron-down]="!historyPanelCollapsed()" [class.bi-chevron-right]="historyPanelCollapsed()"></i>
               </button>
             </div>
-            <div class="session-list" *ngIf="!historyPanelCollapsed() && visibleSessions().length > 0">
-              <div
-                class="session-item"
-                [class.active]="selectedSessionId() === session.id"
-                [class.archived]="!!session.archivedAt"
-                [class.menu-open]="isSessionMenuOpen(session.id)"
-                *ngFor="let session of visibleSessions()"
-                (click)="loadSession(session.id)"
-              >
-                <div class="session-header">
-                  <div class="session-title" *ngIf="renamingSessionId() !== session.id">{{ session.title || 'Untitled chat' }}</div>
-                  <div class="rename-row" *ngIf="renamingSessionId() === session.id">
-                    <input
-                      [ngModel]="renameDraft()"
-                      (ngModelChange)="renameDraft.set($event)"
-                      (click)="$event.stopPropagation()"
-                      (keydown.enter)="commitRename(session, $event)"
-                    />
-                    <button type="button" class="btn btn--sm btn--primary" (click)="commitRename(session, $event)">Save</button>
-                    <button type="button" class="btn btn--sm btn--secondary" (click)="cancelRename($event)">Cancel</button>
-                  </div>
-                  <div class="session-actions">
-                    <button
-                      type="button"
-                      class="btn btn--sm btn--secondary session-menu-trigger"
-                      [disabled]="isSessionBusy(session) || interactionLocked()"
-                      (click)="toggleSessionMenu(session.id, $event)"
-                      aria-label="Session actions"
-                      title="Session actions"
-                    >
-                      ⋯
-                    </button>
-                    <div class="session-menu" *ngIf="isSessionMenuOpen(session.id)" (click)="$event.stopPropagation()">
-                      <button type="button" class="btn btn--sm btn--secondary" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="beginRename(session, $event)">Rename</button>
-                      <button type="button" class="btn btn--sm btn--secondary" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="toggleSessionArchive(session, $event)">
-                        {{ session.archivedAt ? 'Unarchive' : 'Archive' }}
+            <div class="history-panel" *ngIf="!historyPanelCollapsed()">
+              <div class="session-list" *ngIf="visibleSessions().length > 0">
+                <div
+                  class="session-item"
+                  [class.active]="selectedSessionId() === session.id"
+                  [class.archived]="!!session.archivedAt"
+                  [class.menu-open]="isSessionMenuOpen(session.id)"
+                  *ngFor="let session of visibleSessions()"
+                  (click)="loadSession(session.id)"
+                >
+                  <div class="session-header">
+                    <div class="session-title" *ngIf="renamingSessionId() !== session.id">{{ session.title || 'Untitled chat' }}</div>
+                    <div class="rename-row" *ngIf="renamingSessionId() === session.id">
+                      <input
+                        [ngModel]="renameDraft()"
+                        (ngModelChange)="renameDraft.set($event)"
+                        (click)="$event.stopPropagation()"
+                        (keydown.enter)="commitRename(session, $event)"
+                      />
+                      <button type="button" class="btn btn--sm btn--primary" (click)="commitRename(session, $event)">Save</button>
+                      <button type="button" class="btn btn--sm btn--secondary" (click)="cancelRename($event)">Cancel</button>
+                    </div>
+                    <div class="session-actions">
+                      <button
+                        type="button"
+                        class="btn btn--sm btn--secondary session-menu-trigger"
+                        [disabled]="isSessionBusy(session) || interactionLocked()"
+                        (click)="toggleSessionMenu(session.id, $event)"
+                        aria-label="Session actions"
+                        title="Session actions"
+                      >
+                        ⋯
                       </button>
-                      <button type="button" class="btn btn--sm btn--danger" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="deleteSessionItem(session, $event)">Delete</button>
+                      <div class="session-menu" *ngIf="isSessionMenuOpen(session.id)" (click)="$event.stopPropagation()">
+                        <button type="button" class="btn btn--sm btn--secondary" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="beginRename(session, $event)">Rename</button>
+                        <button type="button" class="btn btn--sm btn--secondary" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="toggleSessionArchive(session, $event)">
+                          {{ session.archivedAt ? 'Unarchive' : 'Archive' }}
+                        </button>
+                        <button type="button" class="btn btn--sm btn--danger" [disabled]="isSessionBusy(session) || interactionLocked()" (click)="deleteSessionItem(session, $event)">Delete</button>
+                      </div>
                     </div>
                   </div>
+                  <div class="session-meta">{{ session.messageCount }} msgs</div>
                 </div>
-                <div class="session-meta">{{ session.messageCount }} msgs</div>
               </div>
+              <div class="session-empty" *ngIf="visibleSessions().length === 0">No sessions yet.</div>
             </div>
-            <div class="session-empty" *ngIf="!historyPanelCollapsed() && visibleSessions().length === 0">No sessions yet.</div>
           </section>
 
           <div
@@ -291,7 +293,7 @@
     >
     <section class="chat-pane" aria-labelledby="shell-chat-pane-heading">
       <h2 id="shell-chat-pane-heading" class="visually-hidden-heading">Conversation panel</h2>
-      <div class="controls">
+      <div class="controls" cdkDragHandle>
         <label>
           Tier
           <select [ngModel]="selectedTier()" (ngModelChange)="onTierChange($event)">
@@ -308,6 +310,14 @@
           Model
           <select [ngModel]="selectedModel()" (ngModelChange)="onModelChange($event)">
             <option *ngFor="let model of modelsForUseCase()" [value]="model">{{ model }}</option>
+          </select>
+        </label>
+        <label *ngIf="showProcessingModeControl()">
+          Processing mode
+          <select [ngModel]="processingMode()" (ngModelChange)="onProcessingModeChange($event)">
+            <option value="standard">Standard</option>
+            <option value="priority" [disabled]="priorityProcessingDisabled()">Priority</option>
+            <option value="flex">Flex</option>
           </select>
         </label>
         <label *ngIf="isVisualMediaTab() && isImageMediaMode()">
@@ -498,15 +508,12 @@
       </div>
       <section class="chat-main-scroll" aria-labelledby="shell-messages-heading">
         <h3 id="shell-messages-heading" class="visually-hidden-heading">Messages</h3>
-        <cdk-virtual-scroll-viewport
+        <div
           class="messages"
           *ngIf="!loadingSession() && !isVisualMediaTab()"
           #messagesContainer
-          [itemSize]="180"
-          [minBufferPx]="720"
-          [maxBufferPx]="1440"
         >
-          <div class="message" *cdkVirtualFor="let message of messages(); trackBy: trackByMessageId" [class.user]="message.role === 'user'">
+          <div class="message" *ngFor="let message of messages(); trackBy: trackByMessageId" [class.user]="message.role === 'user'">
             <ng-container *ngIf="message.role === 'assistant'; else userMessageBlock">
               <div class="assistant-response-bubble">
                 <div class="assistant-header-bubble">
@@ -546,17 +553,20 @@
                     <span class="message-stat-chip" *ngIf="message.elapsedSec || messageCostDisplay(message)">Time {{ messageElapsedDisplay(message) }}</span>
                     <span class="message-stat-chip" *ngIf="messageUsageValue(message, 'output') !== null">{{ messageUsageValue(message, 'output')! | number }} out</span>
                     <span class="message-stat-chip" *ngIf="messageUsageValue(message, 'input') !== null">{{ messageUsageValue(message, 'input')! | number }} in</span>
+                    <span class="message-stat-chip" *ngIf="messageCachedInputTokensUsed(message) !== null">{{ messageCachedInputTokensUsed(message)! | number }} cached in</span>
                     <span class="message-stat-chip" *ngIf="messageUsageValue(message, 'reasoning') !== null">{{ messageUsageValue(message, 'reasoning')! | number }} reasoning</span>
                   </span>
                   <img src="/assets/saruman_pixel.png" alt="Assistant icon" class="message-role-icon assistant-right-icon" loading="lazy" decoding="async" />
+                </div>
+                <div class="assistant-control-info" *ngIf="assistantControlInfo(message) as controlInfo">{{ controlInfo }}</div>
+                <div class="assistant-cached-info" *ngIf="messageCachedInputTokensUsed(message) as cachedInputTokensUsed">
+                  Cached input tokens used: {{ cachedInputTokensUsed | number }}
                 </div>
 
                 <div class="assistant-response-pane" *ngIf="shouldShowReasoningPane(message)">
                   <div class="assistant-response-main" *ngIf="!isResponseCollapsed(message)">
                     <div class="assistant-response-header">Response</div>
-                    <div class="message-content assistant-response-content">
-                      {{ message.content || (shouldShowThinkingProgress(message) ? thinkingProgressLabel() : '') }}
-                    </div>
+                    <div class="message-content assistant-response-content" [innerHTML]="assistantResponseHtml(message)"></div>
                   </div>
                   <div class="message-collapsed" *ngIf="isResponseCollapsed(message)">[collapsed]</div>
                   <div
@@ -585,9 +595,7 @@
 
                 <div class="assistant-response-main" *ngIf="!shouldShowReasoningPane(message) && !isTranscriptMessage(message)">
                   <div class="assistant-response-header" *ngIf="!isResponseCollapsed(message)">Response</div>
-                  <div class="message-content assistant-response-content" *ngIf="!isResponseCollapsed(message)">
-                    {{ message.content || (shouldShowThinkingProgress(message) ? thinkingProgressLabel() : '') }}
-                  </div>
+                  <div class="message-content assistant-response-content" *ngIf="!isResponseCollapsed(message)" [innerHTML]="assistantResponseHtml(message)"></div>
                   <div class="message-collapsed" *ngIf="isResponseCollapsed(message)">[collapsed]</div>
                 </div>
 
@@ -653,10 +661,20 @@
                   <img src="/assets/shrek_donkey.png" alt="User icon" class="message-role-icon user-inside-icon" loading="lazy" decoding="async" />
                   <pre class="message-content user-message-text">{{ message.content }}</pre>
                 </div>
+                <button
+                  type="button"
+                  class="btn btn--sm btn--secondary icon-btn user-retry-btn"
+                  [disabled]="interactionLocked() || !showTextComposer()"
+                  (click)="retryUserMessage(message, $event)"
+                  aria-label="Retry user message"
+                  title="Retry user message"
+                >
+                  ↻
+                </button>
               </div>
             </ng-template>
           </div>
-        </cdk-virtual-scroll-viewport>
+        </div>
         <div class="status loading" *ngIf="loadingSession()" role="status" aria-live="polite" aria-busy="true">Loading session...</div>
 
         <ng-container *ngIf="isVisualMediaTab()">
@@ -669,7 +687,7 @@
         <pre class="raw-json embeddings-json-output" *ngIf="isEmbeddingsTab() && embedSearchResult()">{{ embedSearchResult() }}</pre>
       </section>
 
-      <section class="query-row" aria-labelledby="shell-composer-heading">
+  <section class="query-row" aria-labelledby="shell-composer-heading">
         <h3 id="shell-composer-heading" class="visually-hidden-heading">Message composer</h3>
         <form class="composer composer-shell" *ngIf="showTextComposer()" (ngSubmit)="sendMessage()">
           <div class="composer-input-wrap">
@@ -986,6 +1004,51 @@
 
     <div class="query-spacer" *ngIf="!showTextComposer() && selectedUseCase() !== 'voice'" aria-hidden="true"></div>
   </section>
+
+  <div class="priority-mode-backdrop" *ngIf="showPriorityModeInfoModal()" (click)="closePriorityModeInfoModal($event)">
+    <div
+      class="priority-mode-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Priority mode warning"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="priority-mode-modal-header">
+        <div class="priority-mode-modal-title">Priority Mode Notice</div>
+        <button type="button" class="prompt-preset-modal-close" (click)="closePriorityModeInfoModal($event)" title="Close">x</button>
+      </div>
+      <div class="priority-mode-modal-body">
+        <p class="priority-mode-warning-text">
+          Priority use costs significantly in comparison to the Standard and Flex models.
+        </p>
+        <table class="priority-mode-table">
+          <thead>
+            <tr>
+              <th>Processing mode</th>
+              <th>Service tier</th>
+              <th>Input</th>
+              <th>Cached input</th>
+              <th>Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of processingModeComparisonRows()" [class.is-unavailable]="!row.available">
+              <td>{{ row.mode }}</td>
+              <td>{{ row.serviceTier }}</td>
+              <td>{{ row.inputPrice }}</td>
+              <td>{{ row.cachedInputPrice }}</td>
+              <td>{{ row.outputPrice }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="priority-mode-modal-actions">
+        <button type="button" class="btn btn--sm btn--primary" (click)="closePriorityModeInfoModal($event)">Understood</button>
+      </div>
+    </div>
+  </div>
 
   <div class="prompt-preset-backdrop" *ngIf="showPromptPresetModal()" (click)="closePromptPresetModal($event)">
     <div class="prompt-preset-modal" role="dialog" aria-modal="true" aria-label="Prompt editor" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (click)="$event.stopPropagation()">

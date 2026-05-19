@@ -12,8 +12,31 @@ if load_dotenv:
     load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 LEGACY_RUNTIME_DIR = os.path.join(BASE_DIR, "runtime")
-ANGULAR_STATIC_DIR = os.path.join(BASE_DIR, "static", "ng", "browser")
 LEGACY_DIR = os.path.join(BASE_DIR, "Legacy")
+
+
+def _resolve_angular_static_dir() -> str:
+    """
+    Resolve Angular build output with a strong preference for static/ng/browser.
+    This keeps Flask aligned with the current frontend deploy layout.
+    """
+    override = (os.getenv("ELMPLUS_ANGULAR_STATIC_DIR") or "").strip()
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+
+    preferred = os.path.join(BASE_DIR, "static", "ng", "browser")
+    if os.path.isdir(preferred):
+        return preferred
+
+    fallback = os.path.join(BASE_DIR, "static", "ng")
+    if os.path.isdir(fallback):
+        return fallback
+
+    # Keep preferred path as the default target even before first frontend build.
+    return preferred
+
+
+ANGULAR_STATIC_DIR = _resolve_angular_static_dir()
 
 
 def _runtime_path(name: str) -> str:

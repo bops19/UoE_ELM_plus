@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, forwardRef, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { A11yModule } from '@angular/cdk/a11y';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { CdkFixedSizeVirtualScroll, CdkVirtualForOf, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, debounceTime, firstValueFrom, forkJoin } from 'rxjs';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
@@ -29,11 +29,13 @@ import {
   ComputerRunSnapshot,
   DeepResearchMcpProfile,
   DeepResearchToolsSelection,
+  JsonObject,
   ModelMetadataEntry,
   ModelCatalogPayload,
   PromptPreset,
   SessionMessage,
   SessionSummary,
+  UsageModelBreakdownResponse,
   UsageMetrics,
   UsageScope,
   VmCatalogView,
@@ -69,12 +71,23 @@ interface UiPolicy {
   showClear: boolean;
 }
 
-type TokenHistoryTab = 'session' | 'today' | 'all_time';
+interface ProcessingModeComparisonRow {
+  mode: 'Standard' | 'Priority' | 'Flex';
+  serviceTier: 'default' | 'priority' | 'flex';
+  inputPrice: string;
+  cachedInputPrice: string;
+  outputPrice: string;
+  available: boolean;
+}
+
+type TokenHistoryTab = 'session' | 'today' | 'week' | 'month' | 'all_time';
 type VoiceMode = 'realtime' | 'turn' | 'transcribe' | 'tts';
 type MediaMode = 'image' | 'video';
 type SidebarSectionKey = 'files' | 'history';
 type WorkspaceLaneKey = 'left' | 'center' | 'right';
+type ProcessingMode = 'standard' | 'priority' | 'flex';
 type RenderMathFn = (element: HTMLElement, options?: unknown) => void;
+type KatexRenderToStringFn = (expression: string, options?: unknown) => string;
 
 @Component({
   selector: 'app-shell-page',
@@ -84,9 +97,6 @@ type RenderMathFn = (element: HTMLElement, options?: unknown) => void;
     FormsModule,
     A11yModule,
     DragDropModule,
-    CdkVirtualScrollViewport,
-    CdkFixedSizeVirtualScroll,
-    CdkVirtualForOf,
     ShellVisualTabComponent,
     ShellUsagePanelComponent,
     TextInputDialogComponent,
@@ -124,6 +134,23 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   private static readonly MAX_VISIBLE_ACTIVE_SESSIONS = 10;
   private static readonly WEB_SEARCH_SELECTIONS_KEY = 'elm_web_search_by_use_case_v1';
   private static readonly HIDDEN_TOP_LEVEL_USE_CASES = new Set(['audio', 'transcription', 'tts', 'video']);
+  private static readonly SERVICE_TIER_ELIGIBLE_MODELS = new Set([
+    'gpt-5.5',
+    'gpt-5.5-pro',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.4-nano',
+    'gpt-5.4-pro',
+  ]);
+  private static readonly SERVICE_TIER_ELIGIBLE_MODEL_PREFIXES = [
+    'gpt-5.5',
+    'gpt-5.4',
+  ];
+  private static readonly PRIORITY_SERVICE_TIER_UNSUPPORTED_MODELS = new Set([
+    'gpt-5.5-pro',
+    'gpt-5.4-pro',
+    'gpt-5.4-nano',
+  ]);
   private static readonly PREFERRED_USE_CASE_ORDER = [
     'general',
     'reasoning',
@@ -183,6 +210,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   readonly selectedUseCase = signal('general');
   readonly selectedTier = signal('standard');
   readonly selectedModel = signal('gpt-5.4-mini');
+  readonly processingMode = signal<ProcessingMode>('standard');
   readonly selectedThinkingLevel = signal('medium');
   readonly tiers = signal<string[]>([]);
   readonly useCases = signal<string[]>([]);
@@ -224,6 +252,9 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   readonly settingsStatus = signal('');
   readonly usageHistory = signal<UsageHistoryResponse | null>(null);
   readonly loadingUsageHistory = signal(false);
+  readonly modelUsageBreakdown = signal<UsageModelBreakdownResponse | null>(null);
+  readonly modelUsageBreakdownLoading = signal(false);
+  readonly modelUsageBreakdownError = signal('');
   readonly modelCatalogRaw = signal<ModelCatalogPayload | null>(null);
   readonly catalogView = signal<VmCatalogView | null>(null);
   readonly mcpProfiles = signal<DeepResearchMcpProfile[]>([]);
@@ -297,9 +328,9 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   readonly textInputDialogValue = signal('');
   readonly assistantReasoningWidthPx = signal(280);
   readonly thinkingDots = signal('.');
+  readonly showPriorityModeInfoModal = signal(false);
   @ViewChild('shellRoot', { static: true }) private shellRootRef?: ElementRef<HTMLElement>;
   @ViewChild('messagesContainer') private messagesContainerRef?: ElementRef<HTMLDivElement>;
-  @ViewChild(CdkVirtualScrollViewport) private messagesViewport?: CdkVirtualScrollViewport;
 
   private _catalog: ModelCatalogPayload = {};
   private _thinkingEnabledUseCases = new Set<string>();
@@ -308,8 +339,10 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   private _thinkingSelectionByUseCase: Record<string, string> = {};
   private _selectedTierByScope: Record<string, string> = {};
   private _selectedModelByScope: Record<string, string> = {};
+  private _processingModeByScope: Record<string, ProcessingMode> = {};
   private _selectedSessionIdByScope: Record<string, string> = {};
   private _composerDraftByScope: Record<string, string> = {};
+  private _newSessionOnModelSwitchByScope: Record<string, boolean> = {};
   private _showArchivedByScope: Record<string, boolean> = {};
   private _includeWebSearchByUseCase: Record<string, boolean> = {};
   private _reasoningResizeActive = false;
@@ -337,9 +370,13 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   private _stopFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly _scrollTimeouts: ReturnType<typeof setTimeout>[] = [];
   private readonly _renderMath$ = new Subject<HTMLElement>();
+  private readonly _assistantResponseHtmlCache = new Map<string, { source: string; html: string; safeHtml: SafeHtml }>();
   private _renderMathInElement: RenderMathFn | null = null;
   private _renderMathLoader: Promise<void> | null = null;
+  private _katexRenderToString: KatexRenderToStringFn | null = null;
+  private _katexLoader: Promise<void> | null = null;
   private readonly destroyRef = inject(DestroyRef);
+  private readonly sanitizer = inject(DomSanitizer);
   private readonly catalogService = inject(CatalogService);
   private readonly sessionService = inject(SessionService);
   private readonly attachmentService = inject(AttachmentService);
@@ -396,16 +433,18 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   }
 
   private _scheduleMessagesScrollToEnd(): void {
-    requestAnimationFrame(() => {
-      const totalMessages = this.messages().length;
-      if (this.messagesViewport && totalMessages > 0) {
-        this.messagesViewport.scrollToIndex(totalMessages - 1, 'auto');
-      }
-      const node = this.messagesContainerRef?.nativeElement;
-      if (!node) return;
-      node.scrollTop = node.scrollHeight;
-      this._scheduleMathRender(node);
-    });
+    requestAnimationFrame(() => this._scrollMessagesToEndNow());
+    this._scrollTimeouts.push(
+      setTimeout(() => this._scrollMessagesToEndNow(), 80),
+      setTimeout(() => this._scrollMessagesToEndNow(), 260),
+    );
+  }
+
+  private _scrollMessagesToEndNow(): void {
+    const node = this.messagesContainerRef?.nativeElement;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+    this._scheduleMathRender(node);
   }
 
   trackByMessageId = (_index: number, message: SessionMessage): number | string => message.id;
@@ -438,21 +477,33 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     return this._renderMathInElement;
   }
 
-  private async _renderMathInAssistantResponses(root: HTMLElement): Promise<void> {
-    const renderMathInElement = await this._ensureRenderMathInElement();
-    if (typeof renderMathInElement !== 'function') return;
-    const responseNodes = root.querySelectorAll<HTMLElement>('.assistant-response-main .message-content');
-    responseNodes.forEach((element) => {
-      renderMathInElement(element, {
-        delimiters: [
-          { left: '$$', right: '$$', display: true },
-          { left: '\\[', right: '\\]', display: true },
-          { left: '\\(', right: '\\)', display: false },
-          { left: '$', right: '$', display: false },
-        ],
-        throwOnError: false,
+  private _primeKatexRenderer(): void {
+    if (this._katexRenderToString || this._katexLoader) return;
+    this._katexLoader = import('katex')
+      .then((module) => {
+        const next = module?.default;
+        if (next && typeof next.renderToString === 'function') {
+          this._katexRenderToString = next.renderToString.bind(next) as KatexRenderToStringFn;
+        }
+      })
+      .catch(() => {
+        this._katexRenderToString = null;
+      })
+      .finally(() => {
+        this._katexLoader = null;
+        if (!this._katexRenderToString) return;
+        this._assistantResponseHtmlCache.clear();
+        this.messages.set([...this.messages()]);
+        this._scheduleMathRenderForMessagesContainer();
       });
-    });
+  }
+
+  private async _renderMathInAssistantResponses(root: HTMLElement): Promise<void> {
+    // Assistant responses are rendered with KaTeX server-style HTML in
+    // `_renderAssistantHtmlWithKatex`, so running auto-render again can
+    // reprocess nested math markup and corrupt layout.
+    void root;
+    return;
   }
 
   async sendMessage(): Promise<void> {
@@ -467,6 +518,13 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
       this.runImageGenerate();
       return;
     }
+    const scopeKey = this._scopeKey();
+    if (this._newSessionOnModelSwitchByScope[scopeKey] === true) {
+      if (this.selectedSessionId()) {
+        await this.startNewSession();
+      }
+      this._newSessionOnModelSwitchByScope[scopeKey] = false;
+    }
     this.error.set('');
     this.stopRequested.set(false);
     this._clearStopFeedbackTimer();
@@ -478,7 +536,11 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     const abortController = this._activeChatAbortController;
 
     const sessionId = this._ensureSessionId();
-    const scopeKey = this._scopeKey();
+    const requestServiceTier =
+      this.selectedServiceTierForRequest()
+      ?? (this.processingMode() === 'flex' ? 'flex' : undefined);
+    const controlPayload = this._assistantControlPayloadForRequest(scopeKey);
+    let streamErrored = false;
 
     const optimisticMessages = [...this.messages()];
     optimisticMessages.push({
@@ -493,6 +555,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
       role: 'assistant',
       content: '',
       msgType: 'text',
+      payload: { control: controlPayload },
       status: 'pending',
       reasoningStatus: 'pending',
     });
@@ -509,6 +572,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
           model: this.selectedModel(),
           useCase: scopeKey,
           effort: this.effectiveThinkingEffort(),
+          serviceTier: requestServiceTier,
           includeWebSearch: this.includeWebSearchPayloadValue(),
           deepResearchTools: scopeKey === 'deep' ? this._deepResearchSelectionPayload() : undefined,
           deepResearchMcpProfileId: scopeKey === 'deep' ? this._deepResearchMcpProfilePayload() : undefined,
@@ -516,7 +580,15 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
         (event) => {
           if (this._activeStreamToken !== streamToken || abortController.signal.aborted) return;
           if (event.error) {
-            this.error.set(event.error);
+            streamErrored = true;
+            const fullError = this._formatChatStreamError(
+              event.error,
+              event.errorCode,
+              event.requestId,
+              requestServiceTier,
+            );
+            this.error.set(fullError);
+            this._applyAssistantStreamError(assistantIndex, fullError);
             return;
           }
           if (typeof event.content === 'string') {
@@ -561,13 +633,23 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
       if (this._activeStreamToken !== streamToken || abortController.signal.aborted) {
         return;
       }
+      if (streamErrored) {
+        return;
+      }
       this._composerDraftByScope[scopeKey] = '';
       await this.refreshSessions();
       await this.loadSession(sessionId);
       await this.loadUsage();
     } catch (error) {
       if ((error as { name?: string })?.name === 'AbortError') return;
-      this.error.set(this._errorMessage(error));
+      const fullError = this._formatChatStreamError(
+        this._errorMessage(error),
+        undefined,
+        undefined,
+        requestServiceTier,
+      );
+      this.error.set(fullError);
+      this._applyAssistantStreamError(assistantIndex, fullError);
     } finally {
       if (this._activeStreamToken === streamToken) {
         this._activeStreamToken = null;
@@ -611,10 +693,22 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     this._stopThinkingTicker();
   }
 
+  retryUserMessage(message: SessionMessage, event?: Event): void {
+    event?.stopPropagation();
+    if (!message || message.role !== 'user') return;
+    if (this.interactionLocked() || !this.showTextComposer()) return;
+    const text = String(message.content || '').trim();
+    if (!text) return;
+    this.messageInput.set(text);
+    this._composerDraftByScope[this._scopeKey()] = text;
+    void this.sendMessage();
+  }
+
   async startNewSession(): Promise<void> {
     const scopeKey = this._scopeKey();
     this.selectedSessionId.set('');
     this._selectedSessionIdByScope[scopeKey] = '';
+    this._newSessionOnModelSwitchByScope[scopeKey] = false;
     this.messages.set([]);
     this._refreshImageWorkspaceItems();
     this.attachments.set([]);
@@ -662,6 +756,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
         this.contextText.set(view?.context || '');
         this.promptPresetId.set(view?.promptPresetId || '');
         this._syncPromptDropdownValue();
+        this._newSessionOnModelSwitchByScope[sessionScopeKey] = false;
         this._refreshImageWorkspaceItems();
         this._syncModelsForUseCase();
         if (shouldSyncRoute) {
@@ -897,7 +992,14 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   }
 
   onModelChange(model: string): void {
+    const previousModel = String(this.selectedModel() || '').trim();
+    const nextModel = String(model || '').trim();
+    const scopeKey = this._scopeKey();
     this.selectedModel.set(model);
+    if (previousModel && nextModel && previousModel !== nextModel && this.messages().length > 0) {
+      this._newSessionOnModelSwitchByScope[scopeKey] = true;
+    }
+    this._syncProcessingModeForScope();
     this._rememberModelSelectionForScope();
     this._syncVoiceActionModelsFromSelected();
     this._syncVoiceOptionsForSelectedModel();
@@ -910,6 +1012,39 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   onVoiceModeChange(mode: string): void {
     const next = this._isVoiceMode(mode) ? mode : 'realtime';
     this._navigateToUseCase('voice', next);
+  }
+
+  showProcessingModeControl(): boolean {
+    return this._supportsServiceTierSelection(this.selectedModel());
+  }
+
+  priorityProcessingDisabled(): boolean {
+    return !this._supportsPriorityServiceTier(this.selectedModel());
+  }
+
+  onProcessingModeChange(mode: string): void {
+    let next = this._normalizeProcessingMode(mode);
+    if (next === 'priority' && !this._supportsPriorityServiceTier(this.selectedModel())) {
+      next = 'standard';
+    }
+    this.processingMode.set(next);
+    this._rememberProcessingModeForScope();
+    this.refreshCatalogView();
+    if (next === 'priority') this.showPriorityModeInfoModal.set(true);
+  }
+
+  closePriorityModeInfoModal(event?: Event): void {
+    event?.stopPropagation();
+    this.showPriorityModeInfoModal.set(false);
+  }
+
+  processingModeComparisonRows(): ProcessingModeComparisonRow[] {
+    const pricingMap = this._serviceTierPricingForSelectedModel();
+    return [
+      this._processingModeComparisonRow('Standard', 'default', pricingMap?.standard || null),
+      this._processingModeComparisonRow('Priority', 'priority', pricingMap?.priority || null),
+      this._processingModeComparisonRow('Flex', 'flex', pricingMap?.flex || null),
+    ];
   }
 
   onAudioTurnModelChange(model: string): void {
@@ -943,8 +1078,15 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
 
   refreshCatalogView(): void {
     void this.catalogService
-      .refreshCatalogView(this.effectiveModelForPricing(), this.voiceMode())
-      .then(() => this.catalogView.set(this.catalogService.catalogView()));
+      .refreshCatalogView(this.effectiveModelForPricing(), this.voiceMode(), this.processingMode())
+      .then(() => {
+        const latestCatalog = this.catalogService.modelCatalog();
+        if (latestCatalog) {
+          this._catalog = latestCatalog;
+          this.modelCatalogRaw.set(latestCatalog);
+        }
+        this.catalogView.set(this.catalogService.catalogView());
+      });
   }
 
   savePromptSetup(): void {
@@ -978,7 +1120,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
   private _loadInitial(): void {
     forkJoin({
       sessions: this.api.getSessions(),
-      catalog: this.api.getVmCatalog(this.selectedModel(), this.voiceMode()),
+      catalog: this.api.getVmCatalog(this.selectedModel(), this.voiceMode(), this.processingMode()),
       presets: this.api.getPromptPresets(),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: async ({ sessions, catalog, presets }) => {
@@ -1366,6 +1508,72 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     return `Thinking${this.thinkingDots()}`;
   }
 
+  assistantResponseHtml(message: SessionMessage): SafeHtml {
+    const source = String(message.content || (this.shouldShowThinkingProgress(message) ? this.thinkingProgressLabel() : ''));
+    const key = this.assistantMessageKey(message);
+    const cached = this._assistantResponseHtmlCache.get(key);
+    if (cached && cached.source === source) return cached.safeHtml;
+    const html = this._formatAssistantResponseHtml(source);
+    const safeHtml = this.sanitizer.bypassSecurityTrustHtml(html);
+    this._assistantResponseHtmlCache.set(key, { source, html, safeHtml });
+    if (this._assistantResponseHtmlCache.size > 600) {
+      const firstKey = this._assistantResponseHtmlCache.keys().next().value;
+      if (firstKey) this._assistantResponseHtmlCache.delete(firstKey);
+    }
+    return safeHtml;
+  }
+
+  assistantControlInfo(message: SessionMessage): string {
+    if (!this.isAssistantText(message)) return '';
+    const payload = message.payload && typeof message.payload === 'object' ? message.payload : null;
+    const control = payload && payload['control'] && typeof payload['control'] === 'object'
+      ? (payload['control'] as Record<string, unknown>)
+      : null;
+    const useCase = String((control?.['useCase'] as string | undefined) || '').trim();
+    const uiTier = String((control?.['uiTier'] as string | undefined) || '').trim();
+    const model = String((control?.['model'] as string | undefined) || message.usageModel || '').trim();
+    const includeWebSearch = control?.['includeWebSearch'] === true;
+    const thinking = String((control?.['thinking'] as string | undefined) || '').trim();
+    const serviceTier = String((control?.['serviceTier'] as string | undefined) || '').trim().toLowerCase();
+    const processingMode = String((control?.['processingMode'] as string | undefined) || '').trim().toLowerCase();
+    const promptPreset = String((control?.['promptPreset'] as string | undefined) || '').trim();
+    const voiceMode = String((control?.['voiceMode'] as string | undefined) || '').trim();
+    const deepResearchTools = String((control?.['deepResearchTools'] as string | undefined) || '').trim();
+    const mcpProfile = String((control?.['mcpProfile'] as string | undefined) || '').trim();
+    const mediaMode = String((control?.['mediaMode'] as string | undefined) || '').trim();
+    const imageStyle = String((control?.['imageStyle'] as string | undefined) || '').trim();
+    const imageSize = String((control?.['imageSize'] as string | undefined) || '').trim();
+    const imageCount = String((control?.['imageCount'] as string | undefined) || '').trim();
+    const parts: string[] = [];
+    parts.push(`Use case: ${useCase || 'general'}`);
+    parts.push(`Tier: ${uiTier || 'standard'}`);
+    if (model) parts.push(`Model: ${model}`);
+    if (processingMode === 'flex') {
+      parts.push('Mode: Flex');
+    } else if (processingMode === 'priority') {
+      parts.push('Mode: Priority');
+    } else if (processingMode === 'standard') {
+      parts.push('Mode: Standard');
+    } else if (serviceTier === 'flex') {
+      parts.push('Mode: Flex');
+    } else if (serviceTier === 'priority') {
+      parts.push('Mode: Priority');
+    } else if (serviceTier === 'default') {
+      parts.push('Mode: Standard');
+    }
+    parts.push(`Thinking: ${thinking || 'none'}`);
+    parts.push(`Web: ${includeWebSearch ? 'on' : 'off'}`);
+    parts.push(`Prompt: ${promptPreset || 'none'}`);
+    if (voiceMode || useCase === 'voice') parts.push(`Voice: ${voiceMode || 'realtime'}`);
+    if (deepResearchTools || useCase === 'deep') parts.push(`Tools: ${deepResearchTools || 'none'}`);
+    if (mcpProfile || useCase === 'deep') parts.push(`MCP: ${mcpProfile || 'none'}`);
+    if (mediaMode || useCase === 'image') parts.push(`Media: ${mediaMode || 'image'}`);
+    if (imageStyle || useCase === 'image') parts.push(`Style: ${imageStyle || 'default'}`);
+    if (imageSize || useCase === 'image') parts.push(`Size: ${imageSize || 'default'}`);
+    if (imageCount || useCase === 'image') parts.push(`Count: ${imageCount || '1'}`);
+    return parts.join(' • ');
+  }
+
   shouldShowThinkingProgress(message: SessionMessage): boolean {
     if (!message || message.role !== 'assistant') return false;
     if (String(message.content || '').trim()) return false;
@@ -1495,9 +1703,8 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     if (!this.isAssistantText(message)) return;
     this.closeResponseDownloadMenu();
     const text = String(message.content || '');
-    try {
-      await navigator.clipboard.writeText(text);
-      const key = this.assistantMessageKey(message);
+    const key = this.assistantMessageKey(message);
+    this._copyText(text, () => {
       const map = { ...this.copyFeedback(), [key]: true };
       this.copyFeedback.set(map);
       setTimeout(() => {
@@ -1505,20 +1712,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
         delete next[key];
         this.copyFeedback.set(next);
       }, 1200);
-    } catch {
-      if (this._legacyCopyToClipboard(text)) {
-        const key = this.assistantMessageKey(message);
-        const map = { ...this.copyFeedback(), [key]: true };
-        this.copyFeedback.set(map);
-        setTimeout(() => {
-          const next = { ...this.copyFeedback() };
-          delete next[key];
-          this.copyFeedback.set(next);
-        }, 1200);
-        return;
-      }
-      this.error.set('Could not copy message.');
-    }
+    });
   }
 
   isCopyFeedbackVisible(message: SessionMessage): boolean {
@@ -1605,12 +1799,146 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     return Math.floor(value);
   }
 
+  messageCachedInputTokensUsed(message: SessionMessage): number | null {
+    const usage = message.usage;
+    if (!usage || typeof usage !== 'object') return null;
+    const topLevel = Number(usage.cachedInput);
+    if (Number.isFinite(topLevel) && topLevel > 0) return Math.floor(topLevel);
+    const details = usage.details && typeof usage.details === 'object' ? usage.details : null;
+    if (!details) return null;
+    const cachedText = Number(details.inputCachedText || 0);
+    const cachedAudio = Number(details.inputCachedAudio || 0);
+    const cachedImage = Number(details.inputCachedImage || 0);
+    const total = cachedText + cachedAudio + cachedImage;
+    if (!Number.isFinite(total) || total <= 0) return null;
+    return Math.floor(total);
+  }
+
   private _assistantMessageTimestampFallback(message: SessionMessage): number {
     const messageId = String(message.id || '');
     const match = messageId.match(/assistant-(\d{10,})$/);
     if (!match) return 0;
     const timestamp = Number(match[1]);
     return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+  private _assistantControlPayloadForRequest(scopeKey: string): JsonObject {
+    const promptPreset = this.selectedPromptPreset();
+    const deepResearchTools = scopeKey === 'deep' ? this.deepResearchTools() : null;
+    const selectedMcpProfile = deepResearchTools?.mcp
+      ? (this.mcpProfiles().find((profile) => profile.id === deepResearchTools.mcpProfileId) || null)
+      : null;
+    const serviceTier = this.selectedServiceTierForRequest();
+    const payload: JsonObject = {
+      useCase: scopeKey,
+      uiTier: this.selectedTier(),
+      model: this.selectedModel(),
+      processingMode: this.processingMode(),
+      serviceTier: serviceTier || 'default',
+      thinking: this.effectiveThinkingEffort() || 'none',
+      includeWebSearch: this.includeWebSearchPayloadValue() === true,
+      promptPreset: promptPreset?.name || '',
+    };
+    if (scopeKey === 'voice') {
+      payload['voiceMode'] = this.voiceMode();
+    }
+    if (scopeKey === 'deep' && deepResearchTools) {
+      payload['deepResearchTools'] = [
+        deepResearchTools.webSearch ? 'web' : '',
+        deepResearchTools.codeInterpreter ? 'code' : '',
+        deepResearchTools.fileSearch ? 'files' : '',
+        deepResearchTools.mcp ? 'mcp' : '',
+      ].filter(Boolean).join(', ');
+      payload['mcpProfile'] = selectedMcpProfile?.label || '';
+    }
+    if (scopeKey === 'image') {
+      payload['mediaMode'] = this.mediaMode();
+      if (this.mediaMode() === 'image') {
+        payload['imageStyle'] = this.imageStyle();
+        payload['imageSize'] = this.imageSize();
+        payload['imageCount'] = this.imageCount();
+      }
+    }
+    return payload;
+  }
+
+  private _formatAssistantResponseHtml(value: string): string {
+    const normalizedLatex = this._normalizeLatexEscapes(String(value || ''));
+    return this._renderAssistantHtmlWithKatex(normalizedLatex);
+  }
+
+  private _normalizeLatexEscapes(value: string): string {
+    if (!value) return '';
+    const looksLikeLatex = /\\\(|\\\[|\\\]|\\\)|\\begin\{|\\end\{|\\[a-zA-Z]+/.test(value);
+    if (!looksLikeLatex) return value;
+    // Models sometimes emit JSON-style escaped LaTeX (double backslashes).
+    // Normalize to single-backslash commands/delimiters so KaTeX can parse it.
+    return value.replace(/\\\\(?=[\\()[\]{}_^$])/g, '\\').replace(/\\\\(?=[a-zA-Z])/g, '\\');
+  }
+
+  private _renderAssistantHtmlWithKatex(value: string): string {
+    if (!value) return '';
+    const pattern = /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^\n$](?:[\s\S]*?[^\s$])?)\$/g;
+    let html = '';
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(value)) !== null) {
+      const raw = match[0];
+      const offset = match.index;
+      if (offset > cursor) {
+        html += this._renderAssistantPlainTextSegment(value.slice(cursor, offset));
+      }
+      const displayMode = raw.startsWith('\\[') || raw.startsWith('$$');
+      const expression = String(match[1] || match[2] || match[3] || match[4] || '').trim();
+      if (!expression) {
+        html += this._renderAssistantPlainTextSegment(raw);
+      } else {
+        html += this._renderKatexExpression(expression, displayMode, raw);
+      }
+      cursor = offset + raw.length;
+    }
+
+    if (cursor < value.length) {
+      html += this._renderAssistantPlainTextSegment(value.slice(cursor));
+    }
+    return html;
+  }
+
+  private _renderAssistantPlainTextSegment(value: string): string {
+    const escaped = this._escapeHtml(value);
+    return escaped
+      .replace(/\*\*([^*\n][^*]*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
+  private _renderKatexExpression(expression: string, displayMode: boolean, fallbackRaw: string): string {
+    if (!this._katexRenderToString) {
+      this._primeKatexRenderer();
+      return this._renderAssistantPlainTextSegment(fallbackRaw);
+    }
+    try {
+      const rendered = this._katexRenderToString(expression, {
+        displayMode,
+        throwOnError: false,
+        strict: 'ignore',
+        output: 'htmlAndMathml',
+      });
+      return displayMode
+        ? `<div class="assistant-math-display">${rendered}</div>`
+        : `<span class="assistant-math-inline">${rendered}</span>`;
+    } catch {
+      return this._renderAssistantPlainTextSegment(fallbackRaw);
+    }
+  }
+
+  private _escapeHtml(value: string): string {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
   isSessionBusy(session: SessionSummary): boolean {
@@ -1917,18 +2245,24 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     const usage = this.usageView();
     if (tab === 'session') return usage?.activeSession || this.emptyUsageScope();
     if (tab === 'today') return usage?.today || this.emptyUsageScope();
+    if (tab === 'week') return usage?.week || this.emptyUsageScope();
+    if (tab === 'month') return usage?.month || this.emptyUsageScope();
     return usage?.allTime || this.emptyUsageScope();
   }
 
   tokenHistoryScopeTitle(tab: TokenHistoryTab): string {
     if (tab === 'session') return 'Active session by model';
     if (tab === 'today') return 'Today by model';
+    if (tab === 'week') return 'Last 7 days by model';
+    if (tab === 'month') return 'Last 30 days by model';
     return 'All-time by model';
   }
 
   tokenHistoryEmptyMessage(tab: TokenHistoryTab): string {
     if (tab === 'session') return 'No token usage recorded in this session yet.';
     if (tab === 'today') return 'No usage records found for today yet.';
+    if (tab === 'week') return 'No usage records found in the last 7 days yet.';
+    if (tab === 'month') return 'No usage records found in the last 30 days yet.';
     return 'No usage records found yet.';
   }
 
@@ -2007,6 +2341,10 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
 
   selectedModelInputPriceStr(): string {
     return this.catalogView()?.selectedModelInputPriceStr || '—';
+  }
+
+  selectedModelCachedInputPriceStr(): string {
+    return this.catalogView()?.selectedModelCachedInputPriceStr || '—';
   }
 
   selectedModelOutputPriceStr(): string {
@@ -2124,8 +2462,9 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
         this.usageView.set(payload?.usageView || null);
         this.loadingUsage.set(false);
       },
-      error: () => {
+      error: (error: unknown) => {
         this.loadingUsage.set(false);
+        this.error.set(this._errorMessage(error));
       },
     });
   }
@@ -3248,6 +3587,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
       : (ordered.includes(existingSelection.model) ? existingSelection.model : (ordered[0] || ''));
     if (pick) {
       this.selectedModel.set(pick);
+      this._syncProcessingModeForScope(scopeKey);
       this._rememberModelSelectionForScope();
       this._syncVoiceActionModelsFromSelected();
     }
@@ -3258,6 +3598,12 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     const key = scopeKey || this._scopeKey();
     this._selectedTierByScope[key] = this.selectedTier();
     this._selectedModelByScope[key] = this.selectedModel();
+    this._rememberProcessingModeForScope(key);
+  }
+
+  private _rememberProcessingModeForScope(scopeKey?: string): void {
+    const key = scopeKey || this._scopeKey();
+    this._processingModeByScope[key] = this._normalizeProcessingMode(this.processingMode());
   }
 
   private _syncVoiceActionModelsFromSelected(): void {
@@ -3675,6 +4021,7 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     this.showArchivedSessions.set(this._showArchivedByScope[scopeKey] === true);
     this.messageInput.set(this._composerDraftByScope[scopeKey] || '');
     this.selectedSessionId.set(this._selectedSessionIdByScope[scopeKey] || '');
+    this._syncProcessingModeForScope(scopeKey);
   }
 
   private _supportsPromptSetupForUseCase(useCase: string): boolean {
@@ -3686,6 +4033,53 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
     const selected = String(this.selectedThinkingLevel() || '').trim();
     if (!selected || selected === 'none') return undefined;
     return selected;
+  }
+
+  private selectedServiceTierForRequest(): 'default' | 'flex' | 'priority' | undefined {
+    if (!this._supportsServiceTierSelection(this.selectedModel())) return undefined;
+    const mode = this.processingMode();
+    if (mode === 'flex') return 'flex';
+    if (mode === 'priority' && this._supportsPriorityServiceTier(this.selectedModel())) return 'priority';
+    return 'default';
+  }
+
+  private _normalizeProcessingMode(mode: unknown): ProcessingMode {
+    const normalized = String(mode || '').trim().toLowerCase();
+    if (normalized === 'flex') return 'flex';
+    if (normalized === 'priority') return 'priority';
+    return 'standard';
+  }
+
+  private _supportsServiceTierSelection(model: unknown): boolean {
+    const normalized = String(model || '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (ShellPageComponent.SERVICE_TIER_ELIGIBLE_MODELS.has(normalized)) return true;
+    return ShellPageComponent.SERVICE_TIER_ELIGIBLE_MODEL_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+  }
+
+  private _supportsPriorityServiceTier(model: unknown): boolean {
+    const normalized = String(model || '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (!this._supportsServiceTierSelection(normalized)) return false;
+    for (const unsupportedModel of ShellPageComponent.PRIORITY_SERVICE_TIER_UNSUPPORTED_MODELS) {
+      if (normalized === unsupportedModel || normalized.startsWith(`${unsupportedModel}-`)) return false;
+    }
+    return true;
+  }
+
+  private _syncProcessingModeForScope(scopeKey?: string): void {
+    const key = scopeKey || this._scopeKey();
+    if (!this._supportsServiceTierSelection(this.selectedModel())) {
+      this.processingMode.set('standard');
+      this._processingModeByScope[key] = 'standard';
+      return;
+    }
+    let remembered = this._normalizeProcessingMode(this._processingModeByScope[key] || this.processingMode());
+    if (remembered === 'priority' && !this._supportsPriorityServiceTier(this.selectedModel())) {
+      remembered = 'standard';
+    }
+    this.processingMode.set(remembered);
+    this._processingModeByScope[key] = remembered;
   }
 
   private _deepResearchSelectionPayload(): DeepResearchToolsSelection {
@@ -3845,6 +4239,107 @@ export class ShellPageComponent implements OnInit, OnDestroy, ShellPageVm {
       return tail ? `${base} (${tail})` : base;
     }
     return 'Request failed in Angular migration shell.';
+  }
+
+  private _normalizeChatErrorMessage(
+    raw: string,
+    requestServiceTier?: 'default' | 'flex' | 'priority' | undefined,
+  ): string {
+    const message = String(raw || '').trim();
+    if (!message) return message;
+    const lower = message.toLowerCase();
+    const looksCapacity = lower.includes('processing too many requests')
+      || lower.includes('currently processing too many requests')
+      || lower.includes('try again later')
+      || lower.includes('please try again later')
+      || lower.includes('at capacity')
+      || lower.includes('rate limit');
+    const flexSelected = requestServiceTier === 'flex' || lower.includes('flex');
+    if (looksCapacity && flexSelected) {
+      return 'OpenAI Flex is at capacity, switch to Priority/Standard or retry.';
+    }
+    return message;
+  }
+
+  private _formatChatStreamError(
+    raw: string,
+    errorCode?: string,
+    requestId?: string,
+    requestServiceTier?: 'default' | 'flex' | 'priority' | undefined,
+  ): string {
+    const normalized = this._normalizeChatErrorMessage(raw, requestServiceTier);
+    const suffix = [
+      errorCode ? `code: ${String(errorCode).trim()}` : '',
+      requestId ? `request: ${String(requestId).trim()}` : '',
+    ].filter(Boolean).join(' · ');
+    return suffix ? `${normalized} (${suffix})` : normalized;
+  }
+
+  private _applyAssistantStreamError(assistantIndex: number, message: string): void {
+    const nextMessages = [...this.messages()];
+    const target = nextMessages[assistantIndex];
+    if (!target || target.role !== 'assistant') {
+      this.messages.set(nextMessages);
+      return;
+    }
+    target.status = 'error';
+    if (!String(target.content || '').trim()) {
+      target.content = `[Error] ${message}`;
+    }
+    if (!target.reasoningStatus || target.reasoningStatus === 'pending' || target.reasoningStatus === 'streaming') {
+      target.reasoningStatus = 'unavailable';
+    }
+    this.messages.set(nextMessages);
+    this._scheduleMessagesScrollToEnd();
+  }
+
+  private _processingModeComparisonRow(
+    mode: 'Standard' | 'Priority' | 'Flex',
+    serviceTier: 'default' | 'priority' | 'flex',
+    pricing: { inputPricePerMtok?: number; cachedInputPricePerMtok?: number; outputPricePerMtok?: number } | null,
+  ): ProcessingModeComparisonRow {
+    if (!pricing) {
+      return {
+        mode,
+        serviceTier,
+        inputPrice: 'Not available',
+        cachedInputPrice: 'Not available',
+        outputPrice: 'Not available',
+        available: false,
+      };
+    }
+    const input = Number(pricing.inputPricePerMtok);
+    const cachedInput = Number(pricing.cachedInputPricePerMtok);
+    const output = Number(pricing.outputPricePerMtok);
+    return {
+      mode,
+      serviceTier,
+      inputPrice: Number.isFinite(input) ? `$${input.toFixed(2)} / 1M` : 'Not available',
+      cachedInputPrice: Number.isFinite(cachedInput) ? `$${cachedInput.toFixed(2)} / 1M` : 'Not available',
+      outputPrice: Number.isFinite(output) ? `$${output.toFixed(2)} / 1M` : 'Not available',
+      available: Number.isFinite(input) || Number.isFinite(cachedInput) || Number.isFinite(output),
+    };
+  }
+
+  private _serviceTierPricingForSelectedModel():
+    | {
+      standard?: { inputPricePerMtok?: number; cachedInputPricePerMtok?: number; outputPricePerMtok?: number };
+      priority?: { inputPricePerMtok?: number; cachedInputPricePerMtok?: number; outputPricePerMtok?: number };
+      flex?: { inputPricePerMtok?: number; cachedInputPricePerMtok?: number; outputPricePerMtok?: number };
+    }
+    | null {
+    const selectedModel = String(this.selectedModel() || '').trim();
+    if (!selectedModel) return null;
+    const map = this._catalog?.serviceTierTextPricing || {};
+    const direct = map[selectedModel];
+    if (direct) return direct;
+    const selectedMeta = this.selectedModelMetadata();
+    const canonical = String(selectedMeta?.canonicalModelId || '').trim();
+    if (canonical && map[canonical]) return map[canonical];
+    for (const key of Object.keys(map)) {
+      if (selectedModel.startsWith(key)) return map[key];
+    }
+    return null;
   }
 
   private _loadWebSearchByUseCase(): Record<string, boolean> {

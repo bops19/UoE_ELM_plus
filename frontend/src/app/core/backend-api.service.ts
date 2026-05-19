@@ -65,6 +65,23 @@ export interface ModelCatalogPayload {
   };
   modelMap?: Record<string, Record<string, string[]>>;
   modelMetadata?: Record<string, ModelMetadataEntry>;
+  serviceTierTextPricing?: Record<string, {
+    standard?: {
+      inputPricePerMtok?: number;
+      outputPricePerMtok?: number;
+      cachedInputPricePerMtok?: number;
+    };
+    priority?: {
+      inputPricePerMtok?: number;
+      outputPricePerMtok?: number;
+      cachedInputPricePerMtok?: number;
+    };
+    flex?: {
+      inputPricePerMtok?: number;
+      outputPricePerMtok?: number;
+      cachedInputPricePerMtok?: number;
+    };
+  }>;
 }
 
 export interface ModelMetadataEntry {
@@ -82,7 +99,9 @@ export interface VmCatalogResponse {
 
 export interface VmCatalogView {
   selectedModel?: string;
+  serviceTier?: 'default' | 'flex' | 'priority' | string;
   selectedModelInputPriceStr?: string;
+  selectedModelCachedInputPriceStr?: string;
   selectedModelOutputPriceStr?: string;
   voicePrimaryAudioInputPriceLabel?: string;
   voicePrimaryAudioOutputPriceLabel?: string;
@@ -101,6 +120,7 @@ export interface VmCatalogView {
 export interface UsageRow {
   model: string;
   input: number;
+  cachedInput?: number;
   output: number;
   total: number;
   reasoning: number;
@@ -113,6 +133,7 @@ export interface UsageRow {
 export interface UsageScope {
   totals: {
     input: number;
+    cachedInput?: number;
     output: number;
     total: number;
     reasoning: number;
@@ -133,6 +154,8 @@ export interface UsageView {
   };
   activeSession: UsageScope;
   today: UsageScope;
+  week: UsageScope;
+  month: UsageScope;
   allTime: UsageScope;
   panels: {
     chatCostDisplay: string;
@@ -146,6 +169,17 @@ export interface UsageMetrics {
   output?: number;
   total?: number;
   reasoning?: number;
+  cachedInput?: number;
+  details?: {
+    inputText?: number;
+    inputAudio?: number;
+    inputImage?: number;
+    inputCachedText?: number;
+    inputCachedAudio?: number;
+    inputCachedImage?: number;
+    outputText?: number;
+    outputAudio?: number;
+  };
 }
 
 export interface VoiceTurnResult {
@@ -184,6 +218,7 @@ export interface ChatStreamEvent {
   usage?: unknown;
   error?: string;
   errorCode?: string;
+  requestId?: string;
   done?: boolean;
 }
 
@@ -210,6 +245,7 @@ export interface UsageHistoryResponse {
   date: string;
   summary: {
     input: number;
+    cachedInput?: number;
     output: number;
     total: number;
     reasoning: number;
@@ -222,12 +258,42 @@ export interface UsageHistoryResponse {
     useCase: string;
     model: string;
     input: number;
+    cachedInput?: number;
     output: number;
     total: number;
     reasoning: number;
     cost: number;
     costDisplay: string;
   }>;
+}
+
+export type UsageScopeKey = 'session' | 'today' | 'week' | 'month' | 'all_time';
+
+export interface UsageModelBreakdownBucket {
+  timestampLabel: string;
+  input: number;
+  cachedInput?: number;
+  output: number;
+  total: number;
+  reasoning: number;
+  cost: number;
+  costDisplay: string;
+  messageCount: number;
+}
+
+export interface UsageModelBreakdownResponse {
+  scope: UsageScopeKey;
+  model: string;
+  totals: {
+    input: number;
+    cachedInput?: number;
+    output: number;
+    total: number;
+    reasoning: number;
+    cost: number;
+    costDisplay: string;
+  };
+  buckets: UsageModelBreakdownBucket[];
 }
 
 export interface DeepResearchMcpProfile {
@@ -284,10 +350,15 @@ export class BackendApiService {
     return this.http.get<{ sessionView: SessionView }>(`/vm/session/${encodeURIComponent(sessionId)}`);
   }
 
-  getVmCatalog(selectedModel?: string, voiceMode?: string): Observable<VmCatalogResponse> {
+  getVmCatalog(
+    selectedModel?: string,
+    voiceMode?: string,
+    processingMode?: 'standard' | 'priority' | 'flex' | string,
+  ): Observable<VmCatalogResponse> {
     const params = new URLSearchParams();
     if (selectedModel) params.set('selectedModel', selectedModel);
     if (voiceMode) params.set('voiceMode', voiceMode);
+    if (processingMode) params.set('processingMode', processingMode);
     const query = params.toString();
     return this.http.get<VmCatalogResponse>(`/vm/catalog${query ? `?${query}` : ''}`);
   }
@@ -325,6 +396,18 @@ export class BackendApiService {
     if (sessionId) params.set('sessionId', sessionId);
     const query = params.toString();
     return this.http.get<UsageHistoryResponse>(`/usage/history${query ? `?${query}` : ''}`);
+  }
+
+  getUsageModelBreakdown(
+    scope: UsageScopeKey,
+    model: string,
+    sessionId?: string,
+  ): Observable<UsageModelBreakdownResponse> {
+    const params = new URLSearchParams();
+    params.set('scope', scope);
+    params.set('model', model);
+    if (sessionId) params.set('sessionId', sessionId);
+    return this.http.get<UsageModelBreakdownResponse>(`/usage/model-breakdown?${params.toString()}`);
   }
 
   getModelCatalog(): Observable<ModelCatalogPayload> {
@@ -610,6 +693,7 @@ export class BackendApiService {
       model: string;
       useCase: string;
       effort?: string;
+      serviceTier?: 'default' | 'flex' | 'priority';
       includeWebSearch?: boolean;
       deepResearchTools?: DeepResearchToolsSelection;
       deepResearchMcpProfileId?: string;
@@ -630,6 +714,8 @@ export class BackendApiService {
 
     if (!response.ok) {
       let errorText = `Request failed (${response.status})`;
+      let errorCode = '';
+      let requestId = '';
       try {
         const data = await response.json();
         const nestedError = data?.error;
@@ -637,12 +723,21 @@ export class BackendApiService {
           errorText = nestedError.trim();
         } else if (nestedError && typeof nestedError === 'object' && typeof nestedError.message === 'string' && nestedError.message.trim()) {
           errorText = nestedError.message.trim();
+          if (typeof nestedError.errorCode === 'string') errorCode = nestedError.errorCode.trim();
+          if (typeof nestedError.code === 'string' && !errorCode) errorCode = nestedError.code.trim();
+          if (typeof nestedError.requestId === 'string') requestId = nestedError.requestId.trim();
         } else if (typeof data?.message === 'string' && data.message.trim()) {
           errorText = data.message.trim();
         }
+        if (!errorCode && typeof data?.errorCode === 'string') errorCode = data.errorCode.trim();
+        if (!requestId && typeof data?.requestId === 'string') requestId = data.requestId.trim();
       } catch {
       }
-      onEvent({ error: errorText });
+      onEvent({
+        error: errorText,
+        errorCode: errorCode || undefined,
+        requestId: requestId || undefined,
+      });
       return;
     }
 

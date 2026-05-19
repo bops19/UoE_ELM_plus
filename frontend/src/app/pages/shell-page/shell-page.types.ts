@@ -4,12 +4,13 @@ import type {
   ComputerRunSnapshot,
   ImageProject,
   ModelCatalogPayload,
+  UsageModelBreakdownResponse,
   UsageHistoryResponse,
   UsageScope,
   UsageView,
 } from '../../core/backend-api.service';
 
-export type ShellPageTokenHistoryTab = 'session' | 'today' | 'all_time';
+export type ShellPageTokenHistoryTab = 'session' | 'today' | 'week' | 'month' | 'all_time';
 export type ShellPageVoiceMode = 'realtime' | 'turn' | 'transcribe' | 'tts';
 export type ShellPageImageActionPending = 'none' | 'regenerate' | 'refine' | 'variation';
 
@@ -98,6 +99,7 @@ export interface UsagePanelVm {
   totalChatContextBarPct(): number;
   isVoiceTab(): boolean;
   selectedModelInputPriceStr(): string;
+  selectedModelCachedInputPriceStr(): string;
   selectedModelOutputPriceStr(): string;
   voicePrimaryAudioInputPriceLabel(): string;
   voicePrimaryAudioInputPriceStr(): string;
@@ -124,6 +126,10 @@ export interface UsagePanelVm {
   tokenHistoryScope(tab: ShellPageTokenHistoryTab): UsageScope;
   tokenHistoryScopeTotalDisplay(tab: ShellPageTokenHistoryTab): string;
   tokenHistoryEmptyMessage(tab: ShellPageTokenHistoryTab): string;
+  selectedSessionId: WritableSignal<string>;
+  modelUsageBreakdown: WritableSignal<UsageModelBreakdownResponse | null>;
+  modelUsageBreakdownLoading: WritableSignal<boolean>;
+  modelUsageBreakdownError: WritableSignal<string>;
 }
 
 export interface VoiceTabVm {

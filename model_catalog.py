@@ -276,16 +276,16 @@ MODEL_METADATA = {
         "ttsVoices": MODERN_TTS_VOICES,
         "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
     },
-    "gpt-5.5-pro": {"contextWindow": 1_050_000, "inputPricePerMtok": 30.0, "outputPricePerMtok": 180.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro"},
-    "gpt-5.5": {"contextWindow": 1_000_000, "inputPricePerMtok": 5.0, "outputPricePerMtok": 30.0, "sourceUrl": "https://developers.openai.com/api/docs/models"},
-    "gpt-5.4-pro": {"contextWindow": 1_050_000, "inputPricePerMtok": 30.0, "outputPricePerMtok": 180.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-pro"},
-    "gpt-5.4": {"contextWindow": 1_050_000, "inputPricePerMtok": 2.5, "outputPricePerMtok": 15.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4"},
-    "gpt-5.4-mini": {"contextWindow": 400_000, "inputPricePerMtok": 0.75, "outputPricePerMtok": 4.5, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"},
-    "gpt-5.4-nano": {"contextWindow": 400_000, "inputPricePerMtok": 0.2, "outputPricePerMtok": 1.25, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-nano"},
-    "gpt-5": {"contextWindow": 400_000, "inputPricePerMtok": 1.25, "outputPricePerMtok": 10.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5"},
-    "gpt-5-pro": {"contextWindow": 400_000, "inputPricePerMtok": 15.0, "outputPricePerMtok": 120.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-pro"},
-    "gpt-5-mini": {"contextWindow": 400_000, "inputPricePerMtok": 0.25, "outputPricePerMtok": 2.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-mini"},
-    "gpt-5-nano": {"contextWindow": 400_000, "inputPricePerMtok": 0.05, "outputPricePerMtok": 0.4, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-nano"},
+    "gpt-5.5-pro": {"contextWindow": 1_050_000, "inputPricePerMtok": 30.0, "cachedInputPricePerMtok": 3.0, "outputPricePerMtok": 180.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro"},
+    "gpt-5.5": {"contextWindow": 1_000_000, "inputPricePerMtok": 5.0, "cachedInputPricePerMtok": 0.5, "outputPricePerMtok": 30.0, "sourceUrl": "https://developers.openai.com/api/docs/models"},
+    "gpt-5.4-pro": {"contextWindow": 1_050_000, "inputPricePerMtok": 30.0, "cachedInputPricePerMtok": 3.0, "outputPricePerMtok": 180.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-pro"},
+    "gpt-5.4": {"contextWindow": 1_050_000, "inputPricePerMtok": 2.5, "cachedInputPricePerMtok": 0.25, "outputPricePerMtok": 15.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4"},
+    "gpt-5.4-mini": {"contextWindow": 400_000, "inputPricePerMtok": 0.75, "cachedInputPricePerMtok": 0.075, "outputPricePerMtok": 4.5, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"},
+    "gpt-5.4-nano": {"contextWindow": 400_000, "inputPricePerMtok": 0.2, "cachedInputPricePerMtok": 0.02, "outputPricePerMtok": 1.25, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-nano"},
+    "gpt-5": {"contextWindow": 400_000, "inputPricePerMtok": 1.25, "cachedInputPricePerMtok": 0.125, "outputPricePerMtok": 10.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5"},
+    "gpt-5-pro": {"contextWindow": 400_000, "inputPricePerMtok": 15.0, "cachedInputPricePerMtok": 1.5, "outputPricePerMtok": 120.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-pro"},
+    "gpt-5-mini": {"contextWindow": 400_000, "inputPricePerMtok": 0.25, "cachedInputPricePerMtok": 0.025, "outputPricePerMtok": 2.0, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-mini"},
+    "gpt-5-nano": {"contextWindow": 400_000, "inputPricePerMtok": 0.05, "cachedInputPricePerMtok": 0.005, "outputPricePerMtok": 0.4, "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-nano"},
     "gpt-5-chat-latest": {"contextWindow": 128_000, "inputPricePerMtok": 1.25, "outputPricePerMtok": 10.0, "canonicalModelId": "gpt-5", "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5"},
     "gpt-5.1": {"contextWindow": 400_000, "inputPricePerMtok": 1.25, "outputPricePerMtok": 10.0, "canonicalModelId": "gpt-5", "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5"},
     "gpt-5.1-chat-latest": {"contextWindow": 128_000, "inputPricePerMtok": 1.25, "outputPricePerMtok": 10.0, "canonicalModelId": "gpt-5", "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5"},
@@ -341,15 +341,73 @@ THINKING_POLICY = {
 REASONING_EFFORT_MODEL_PREFIXES = ["o1", "o3", "o3-mini", "o4-mini"]
 RESPONSES_API_MODEL_PREFIXES = ["gpt-5", "o3-pro", "o3-deep-research", "o4-mini-deep-research"]
 
+# Source: OpenAI API pricing docs (developers.openai.com/api/docs/pricing), captured 2026-05-08.
+SERVICE_TIER_TEXT_PRICING = {
+    "gpt-5.5": {
+        "standard": {"inputPricePerMtok": 5.0, "cachedInputPricePerMtok": 0.5, "outputPricePerMtok": 30.0},
+        "flex": {"inputPricePerMtok": 2.5, "cachedInputPricePerMtok": 0.25, "outputPricePerMtok": 15.0},
+        "priority": {"inputPricePerMtok": 12.5, "cachedInputPricePerMtok": 1.25, "outputPricePerMtok": 75.0},
+    },
+    "gpt-5.5-pro": {
+        "standard": {"inputPricePerMtok": 30.0, "cachedInputPricePerMtok": 3.0, "outputPricePerMtok": 180.0},
+        "flex": {"inputPricePerMtok": 15.0, "cachedInputPricePerMtok": 1.5, "outputPricePerMtok": 90.0},
+    },
+    "gpt-5.4": {
+        "standard": {"inputPricePerMtok": 2.5, "cachedInputPricePerMtok": 0.25, "outputPricePerMtok": 15.0},
+        "flex": {"inputPricePerMtok": 1.25, "cachedInputPricePerMtok": 0.13, "outputPricePerMtok": 7.5},
+        "priority": {"inputPricePerMtok": 5.0, "cachedInputPricePerMtok": 0.5, "outputPricePerMtok": 30.0},
+    },
+    "gpt-5.4-mini": {
+        "standard": {"inputPricePerMtok": 0.75, "cachedInputPricePerMtok": 0.075, "outputPricePerMtok": 4.5},
+        "flex": {"inputPricePerMtok": 0.375, "cachedInputPricePerMtok": 0.0375, "outputPricePerMtok": 2.25},
+        "priority": {"inputPricePerMtok": 1.5, "cachedInputPricePerMtok": 0.15, "outputPricePerMtok": 9.0},
+    },
+    "gpt-5.4-nano": {
+        "standard": {"inputPricePerMtok": 0.2, "cachedInputPricePerMtok": 0.02, "outputPricePerMtok": 1.25},
+        "flex": {"inputPricePerMtok": 0.1, "cachedInputPricePerMtok": 0.01, "outputPricePerMtok": 0.625},
+    },
+    "gpt-5.4-pro": {
+        "standard": {"inputPricePerMtok": 30.0, "cachedInputPricePerMtok": 3.0, "outputPricePerMtok": 180.0},
+        "flex": {"inputPricePerMtok": 15.0, "cachedInputPricePerMtok": 1.5, "outputPricePerMtok": 90.0},
+    },
+}
 
-def get_model_catalog_payload() -> dict:
+SUPPORTED_SERVICE_TIERS = {"default", "flex", "priority"}
+
+
+def _model_metadata_for_service_tier(service_tier: str | None = None) -> dict:
+    tier = normalize_service_tier(service_tier)
+    if tier == "default":
+        return MODEL_METADATA
+
+    adjusted: dict[str, dict] = {}
+    for model_id, meta in MODEL_METADATA.items():
+        merged = dict(meta)
+        tier_pricing = pricing_for_model(model_id, service_tier=tier)
+        if tier_pricing:
+            merged["inputPricePerMtok"] = float(tier_pricing.get("input") or 0.0)
+            merged["cachedInputPricePerMtok"] = float(tier_pricing.get("cached_input") or 0.0)
+            merged["outputPricePerMtok"] = float(tier_pricing.get("output") or 0.0)
+            merged["audioInputPricePerMtok"] = float(tier_pricing.get("audio_input") or 0.0)
+            merged["audioCachedInputPricePerMtok"] = float(tier_pricing.get("audio_cached_input") or 0.0)
+            merged["audioOutputPricePerMtok"] = float(tier_pricing.get("audio_output") or 0.0)
+            merged["imageInputPricePerMtok"] = float(tier_pricing.get("image_input") or 0.0)
+            merged["imageCachedInputPricePerMtok"] = float(tier_pricing.get("image_cached_input") or 0.0)
+        adjusted[model_id] = merged
+    return adjusted
+
+
+def get_model_catalog_payload(service_tier: str | None = None) -> dict:
+    normalized_tier = normalize_service_tier(service_tier)
     return {
         "useCases": USE_CASES,
         "tiers": TIERS,
         "modelMap": MODEL_MAP,
-        "modelMetadata": MODEL_METADATA,
+        "modelMetadata": _model_metadata_for_service_tier(normalized_tier),
+        "serviceTierTextPricing": SERVICE_TIER_TEXT_PRICING,
         "defaults": DEFAULTS,
         "thinkingPolicy": THINKING_POLICY,
+        "effectiveServiceTier": normalized_tier,
     }
 
 
@@ -357,40 +415,86 @@ def use_case_keys() -> set[str]:
     return {str(item.get("key") or "").strip() for item in USE_CASES if str(item.get("key") or "").strip()}
 
 
-def pricing_for_model(model: str) -> dict[str, float | str] | None:
-    if not model:
+def normalize_service_tier(service_tier: str | None) -> str:
+    normalized = str(service_tier or "").strip().lower()
+    if normalized in SUPPORTED_SERVICE_TIERS:
+        return normalized
+    return "default"
+
+
+def _resolve_model_meta(model: str | None) -> dict | None:
+    model_value = str(model or "").strip()
+    if not model_value:
         return None
-    if model in MODEL_METADATA:
-        meta = MODEL_METADATA[model]
-        canonical = meta.get("canonicalModelId")
+    direct = MODEL_METADATA.get(model_value)
+    if direct:
+        canonical = direct.get("canonicalModelId")
         if isinstance(canonical, str) and canonical in MODEL_METADATA:
-            meta = MODEL_METADATA[canonical]
-        return {
-            "input": float(meta.get("inputPricePerMtok") or 0.0),
-            "cached_input": float(meta.get("cachedInputPricePerMtok") or 0.0),
-            "output": float(meta.get("outputPricePerMtok") or 0.0),
-            "audio_input": float(meta.get("audioInputPricePerMtok") or 0.0),
-            "audio_cached_input": float(meta.get("audioCachedInputPricePerMtok") or 0.0),
-            "audio_output": float(meta.get("audioOutputPricePerMtok") or 0.0),
-            "image_input": float(meta.get("imageInputPricePerMtok") or 0.0),
-            "image_cached_input": float(meta.get("imageCachedInputPricePerMtok") or 0.0),
-        }
+            return MODEL_METADATA[canonical]
+        return direct
     for key, meta in MODEL_METADATA.items():
-        if model.startswith(key):
+        if model_value.startswith(key):
             canonical = meta.get("canonicalModelId")
             if isinstance(canonical, str) and canonical in MODEL_METADATA:
-                meta = MODEL_METADATA[canonical]
-            return {
-                "input": float(meta.get("inputPricePerMtok") or 0.0),
-                "cached_input": float(meta.get("cachedInputPricePerMtok") or 0.0),
-                "output": float(meta.get("outputPricePerMtok") or 0.0),
-                "audio_input": float(meta.get("audioInputPricePerMtok") or 0.0),
-                "audio_cached_input": float(meta.get("audioCachedInputPricePerMtok") or 0.0),
-                "audio_output": float(meta.get("audioOutputPricePerMtok") or 0.0),
-                "image_input": float(meta.get("imageInputPricePerMtok") or 0.0),
-                "image_cached_input": float(meta.get("imageCachedInputPricePerMtok") or 0.0),
-            }
+                return MODEL_METADATA[canonical]
+            return meta
     return None
+
+
+def _resolve_service_tier_pricing(model: str | None) -> dict | None:
+    model_value = str(model or "").strip()
+    if not model_value:
+        return None
+    direct = SERVICE_TIER_TEXT_PRICING.get(model_value)
+    if direct:
+        return direct
+    meta = MODEL_METADATA.get(model_value)
+    canonical = str(meta.get("canonicalModelId") or "").strip() if isinstance(meta, dict) else ""
+    if canonical and canonical in SERVICE_TIER_TEXT_PRICING:
+        return SERVICE_TIER_TEXT_PRICING[canonical]
+    for key, tiers in SERVICE_TIER_TEXT_PRICING.items():
+        if model_value.startswith(key):
+            return tiers
+    return None
+
+
+def model_supports_priority_service_tier(model: str | None) -> bool:
+    tiers = _resolve_service_tier_pricing(model)
+    return isinstance(tiers, dict) and isinstance(tiers.get("priority"), dict)
+
+
+def model_supports_flex_service_tier(model: str | None) -> bool:
+    tiers = _resolve_service_tier_pricing(model)
+    return isinstance(tiers, dict) and isinstance(tiers.get("flex"), dict)
+
+
+def pricing_for_model(model: str, service_tier: str | None = None) -> dict[str, float | str] | None:
+    meta = _resolve_model_meta(model)
+    if not meta:
+        return None
+    tier = normalize_service_tier(service_tier)
+    tier_pricing = _resolve_service_tier_pricing(model)
+    override = None
+    if isinstance(tier_pricing, dict):
+        if tier == "priority":
+            override = tier_pricing.get("priority") or tier_pricing.get("standard")
+        elif tier == "flex":
+            override = tier_pricing.get("flex") or tier_pricing.get("standard")
+        else:
+            override = tier_pricing.get("standard")
+    pricing_meta = dict(meta)
+    if isinstance(override, dict):
+        pricing_meta.update(override)
+    return {
+        "input": float(pricing_meta.get("inputPricePerMtok") or 0.0),
+        "cached_input": float(pricing_meta.get("cachedInputPricePerMtok") or 0.0),
+        "output": float(pricing_meta.get("outputPricePerMtok") or 0.0),
+        "audio_input": float(pricing_meta.get("audioInputPricePerMtok") or 0.0),
+        "audio_cached_input": float(pricing_meta.get("audioCachedInputPricePerMtok") or 0.0),
+        "audio_output": float(pricing_meta.get("audioOutputPricePerMtok") or 0.0),
+        "image_input": float(pricing_meta.get("imageInputPricePerMtok") or 0.0),
+        "image_cached_input": float(pricing_meta.get("imageCachedInputPricePerMtok") or 0.0),
+    }
 
 
 def context_window_for_model(model: str) -> int | None:

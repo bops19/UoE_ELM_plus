@@ -65,6 +65,11 @@
       </div>
 
       <div class="stat-block" *ngIf="!vm.isVoiceTab()">
+        <div class="stat-label">CACHED INPUT TOKEN</div>
+        <div class="stat-value token-price-value">{{ vm.selectedModelCachedInputPriceStr() }}</div>
+      </div>
+
+      <div class="stat-block" *ngIf="!vm.isVoiceTab()">
         <div class="stat-label">OUTPUT TOKEN</div>
         <div class="stat-value token-price-value">{{ vm.selectedModelOutputPriceStr() }}</div>
       </div>
@@ -140,14 +145,64 @@
       <button type="button" class="token-history-close" (click)="vm.closeTokenHistory($event)" title="Close">x</button>
     </div>
 
-    <div class="token-history-tabs">
-      <button type="button" class="token-history-tab-btn" [class.token-history-tab-active]="vm.isTokenHistoryTab('session')" (click)="vm.setTokenHistoryTab('session')">
+    <div class="token-history-tabs token-history-view-tabs">
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="isHistoryViewMode('table')"
+        (click)="setHistoryViewMode('table')"
+      >
+        TABLE
+      </button>
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="isHistoryViewMode('visual')"
+        (click)="setHistoryViewMode('visual')"
+      >
+        VISUAL
+      </button>
+    </div>
+
+    <div class="token-history-tabs" *ngIf="isHistoryViewMode('table')">
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="vm.isTokenHistoryTab('session')"
+        (click)="setHistoryViewMode('table'); selectScope('session')"
+      >
         ACTIVE SESSION
       </button>
-      <button type="button" class="token-history-tab-btn" [class.token-history-tab-active]="vm.isTokenHistoryTab('today')" (click)="vm.setTokenHistoryTab('today')">
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="vm.isTokenHistoryTab('today')"
+        (click)="setHistoryViewMode('table'); selectScope('today')"
+      >
         TODAY
       </button>
-      <button type="button" class="token-history-tab-btn" [class.token-history-tab-active]="vm.isTokenHistoryTab('all_time')" (click)="vm.setTokenHistoryTab('all_time')">
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="vm.isTokenHistoryTab('week')"
+        (click)="setHistoryViewMode('table'); selectScope('week')"
+      >
+        WEEK
+      </button>
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="vm.isTokenHistoryTab('month')"
+        (click)="setHistoryViewMode('table'); selectScope('month')"
+      >
+        MONTH
+      </button>
+      <button
+        type="button"
+        class="token-history-tab-btn"
+        [class.token-history-tab-active]="vm.isTokenHistoryTab('all_time')"
+        (click)="setHistoryViewMode('table'); selectScope('all_time')"
+      >
         OVERALL SO FAR
       </button>
     </div>
@@ -155,8 +210,8 @@
     <table class="token-history-summary-table" *ngIf="!vm.loadingUsage()">
       <tbody>
         <tr>
-          <td><strong>MODELS:</strong> {{ tokenHistoryRows().length }}</td>
-          <td><strong>COST:</strong> {{ vm.tokenHistoryScopeTotalDisplay(vm.tokenHistoryTab()) }}</td>
+          <td><strong>MODELS:</strong> {{ tokenHistorySummaryModelCount() }}</td>
+          <td><strong>COST:</strong> {{ tokenHistorySummaryCost() }}</td>
         </tr>
       </tbody>
     </table>
@@ -174,13 +229,28 @@
             (ngModelChange)="setFilterQuery($event)"
             placeholder="Type model name..."
           />
+          <label class="token-history-filter-label" for="token-visual-scope" *ngIf="isHistoryViewMode('visual')">Visual scope</label>
+          <select
+            id="token-visual-scope"
+            class="token-history-filter-input token-history-scope-select"
+            *ngIf="isHistoryViewMode('visual')"
+            [ngModel]="visualScopeValue()"
+            (ngModelChange)="selectScope($event)"
+          >
+            <option value="session">Session</option>
+            <option value="today">Today</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+            <option value="all_time">Overall</option>
+          </select>
         </div>
-        <div class="usage-table-wrap">
+        <div class="usage-table-wrap" *ngIf="isHistoryViewMode('table')">
           <table class="usage-table token-history-table" *ngIf="tokenHistoryRows().length > 0">
             <thead>
               <tr>
                 <th><button type="button" class="usage-sort-btn" (click)="setSort('model')">MODEL {{ sortIndicator('model') }}</button></th>
                 <th><button type="button" class="usage-sort-btn" (click)="setSort('input')">INPUT {{ sortIndicator('input') }}</button></th>
+                <th><button type="button" class="usage-sort-btn" (click)="setSort('cachedInput')">CACHED INPUT {{ sortIndicator('cachedInput') }}</button></th>
                 <th><button type="button" class="usage-sort-btn" (click)="setSort('reasoning')">REASONING {{ sortIndicator('reasoning') }}</button></th>
                 <th><button type="button" class="usage-sort-btn" (click)="setSort('output')">OUTPUT {{ sortIndicator('output') }}</button></th>
                 <th><button type="button" class="usage-sort-btn" (click)="setSort('total')">OVERALL {{ sortIndicator('total') }}</button></th>
@@ -191,8 +261,13 @@
             </thead>
             <tbody>
               <tr *ngFor="let row of tokenHistoryRows()">
-                <td>{{ row.model }}</td>
+                <td>
+                  <button type="button" class="usage-model-btn" (click)="openModelBreakdown(row.model)">
+                    {{ row.model }}
+                  </button>
+                </td>
                 <td>{{ row.input | number }}</td>
+                <td>{{ (row.cachedInput || 0) | number }}</td>
                 <td>{{ row.reasoning | number }}</td>
                 <td>{{ row.output | number }}</td>
                 <td>{{ row.total | number }}</td>
@@ -203,8 +278,78 @@
             </tbody>
           </table>
         </div>
-        <div class="token-history-empty" *ngIf="tokenHistoryRows().length === 0">
+        <div class="token-history-visual-wrap" *ngIf="isHistoryViewMode('visual') && tokenHistoryVisualRows().length > 0">
+          <div class="token-history-visual-chart" #tokenVisualChart></div>
+          <div class="token-history-visual-chart token-history-visual-chart-cost" #tokenCostVisualChart></div>
+          <div class="token-history-visual-model-links">
+            <span class="token-history-filter-label">Models:</span>
+            <button type="button" class="usage-model-btn" *ngFor="let row of tokenHistoryVisualRows()" (click)="openModelBreakdown(row.model)">
+              {{ row.model }}
+            </button>
+          </div>
+        </div>
+        <div class="token-history-empty" *ngIf="isHistoryViewMode('table') && tokenHistoryRows().length === 0">
           {{ vm.tokenHistoryEmptyMessage(vm.tokenHistoryTab()) | uppercase }}
+        </div>
+        <div class="token-history-empty" *ngIf="isHistoryViewMode('visual') && tokenHistoryVisualRows().length === 0">
+          {{ vm.tokenHistoryEmptyMessage(vm.tokenHistoryTab()) | uppercase }}
+        </div>
+
+        <div class="token-history-model-breakdown" *ngIf="selectedModelName">
+          <div class="token-history-model-breakdown-header">
+            <strong>MODEL BREAKDOWN:</strong> {{ selectedModelName }}
+            <button type="button" class="token-history-close" (click)="clearModelBreakdown()">Close</button>
+          </div>
+          <div class="token-history-empty" *ngIf="modelBreakdownLoading">LOADING MODEL SPLIT...</div>
+          <div class="token-history-empty" *ngIf="!modelBreakdownLoading && modelBreakdownError">{{ modelBreakdownError }}</div>
+          <div *ngIf="!modelBreakdownLoading && !modelBreakdownError && modelBreakdownData as breakdown">
+            <table class="token-history-summary-table">
+              <tbody>
+                <tr>
+                  <td><strong>INPUT:</strong> {{ breakdown.totals.input | number }}</td>
+                  <td><strong>CACHED INPUT:</strong> {{ (breakdown.totals.cachedInput || 0) | number }}</td>
+                  <td><strong>REASONING:</strong> {{ breakdown.totals.reasoning | number }}</td>
+                  <td><strong>OUTPUT:</strong> {{ breakdown.totals.output | number }}</td>
+                  <td><strong>COST:</strong> {{ breakdown.totals.costDisplay }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="usage-table-wrap" *ngIf="isHistoryViewMode('table') && breakdown.buckets.length > 0">
+              <table class="usage-table token-history-table">
+                <thead>
+                  <tr>
+                    <th>TIMESTAMP</th>
+                    <th>INPUT</th>
+                    <th>CACHED INPUT</th>
+                    <th>REASONING</th>
+                    <th>OUTPUT</th>
+                    <th>OVERALL</th>
+                    <th>COST</th>
+                    <th>MESSAGES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let bucket of breakdown.buckets">
+                    <td>{{ bucket.timestampLabel }}</td>
+                    <td>{{ bucket.input | number }}</td>
+                    <td>{{ (bucket.cachedInput || 0) | number }}</td>
+                    <td>{{ bucket.reasoning | number }}</td>
+                    <td>{{ bucket.output | number }}</td>
+                    <td>{{ bucket.total | number }}</td>
+                    <td>{{ bucket.costDisplay }}</td>
+                    <td>{{ bucket.messageCount | number }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="token-history-visual-wrap" *ngIf="isHistoryViewMode('visual') && breakdown.buckets.length > 0">
+              <div class="token-history-visual-chart" #modelBreakdownTokenChart></div>
+              <div class="token-history-visual-chart token-history-visual-chart-cost" #modelBreakdownCostChart></div>
+            </div>
+            <div class="token-history-empty" *ngIf="breakdown.buckets.length === 0">
+              NO TIMESTAMP SPLIT DATA FOUND FOR THIS MODEL IN THE SELECTED SCOPE.
+            </div>
+          </div>
         </div>
       </div>
     </div>

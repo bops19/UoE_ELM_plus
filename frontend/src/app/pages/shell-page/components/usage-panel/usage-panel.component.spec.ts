@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { SHELL_PAGE_VM } from '../../shell-page.types';
+import { BackendApiService } from '../../../../core/backend-api.service';
 import { ShellUsagePanelComponent } from './usage-panel.component';
 
 function signalStub<T>(value: T): () => T {
@@ -19,7 +20,10 @@ describe('ShellUsagePanelComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [ShellUsagePanelComponent],
-      providers: [{ provide: SHELL_PAGE_VM, useValue: vm }],
+      providers: [
+        { provide: SHELL_PAGE_VM, useValue: vm },
+        { provide: BackendApiService, useValue: { getUsageModelBreakdown: vi.fn() } },
+      ],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(ShellUsagePanelComponent);

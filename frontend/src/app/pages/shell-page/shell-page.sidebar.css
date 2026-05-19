@@ -246,6 +246,21 @@
   padding: 4px 3px 6px 0;
 }
 
+.history-panel {
+  margin-top: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 90%;
+  align-self: center;
+}
+
 .session-item {
   width: 100%;
   border: none;
@@ -420,4 +435,84 @@
 
 .session-list:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
   background: var(--color-legacy-a4b5ce);
+}
+
+.priority-mode-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 18, 32, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 65;
+  padding: 16px;
+}
+
+.priority-mode-modal {
+  width: min(760px, 100%);
+  max-height: min(82vh, 760px);
+  overflow: auto;
+  border: 1px solid var(--color-legacy-d5dfef);
+  border-radius: 12px;
+  background: var(--color-surface-0);
+  box-shadow: 0 12px 30px rgba(22, 37, 58, 0.2);
+  padding: 12px;
+}
+
+.priority-mode-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.priority-mode-modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-legacy-203756);
+}
+
+.priority-mode-modal-body {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.priority-mode-warning-text {
+  margin: 0;
+  color: var(--color-text-black);
+  font-size: 0.9rem;
+}
+
+.priority-mode-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 0.84rem;
+  background: var(--color-surface-0);
+}
+
+.priority-mode-table th,
+.priority-mode-table td {
+  text-align: left;
+  border-bottom: 1px solid var(--color-legacy-e8edf6);
+  padding: 9px 10px;
+  color: var(--color-text-black);
+}
+
+.priority-mode-table thead th {
+  background: #001f3f;
+  color: #fff;
+  border-bottom: 1px solid #c6d8f2;
+}
+
+.priority-mode-table tbody tr.is-unavailable td {
+  color: var(--color-text-tertiary);
+}
+
+.priority-mode-modal-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
 }

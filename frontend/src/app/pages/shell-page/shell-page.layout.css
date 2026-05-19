@@ -58,11 +58,6 @@
 }
 
 .chat-root.window-frozen .workspace {
-  pointer-events: none;
-}
-
-.chat-root.window-frozen .workspace .query-row,
-.chat-root.window-frozen .workspace .query-row * {
   pointer-events: auto;
 }
 
@@ -344,7 +339,7 @@ app-shell-usage-panel {
   overflow: hidden;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
-  padding: 0 8px 8px calc(8px + 1%);
+  padding: 1% 8px 8px calc(8px + 1%);
   display: flex;
   flex-direction: column;
 }
@@ -376,6 +371,7 @@ app-shell-usage-panel {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding-top: 1%;
   font-size: var(--font-size-base);
   font-weight: 700;
   color: var(--color-text-black);
