@@ -32,6 +32,7 @@ def _resolve_angular_static_dir() -> str:
     if os.path.isdir(fallback):
         return fallback
 
+    # Keep preferred path as the default target even before first frontend build.
     return preferred
 
 
