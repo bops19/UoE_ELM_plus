@@ -41,6 +41,60 @@ A self-hosted web application for AI-assisted conversations with support for voi
 - Node.js 22 (LTS) — for frontend development
 - An [OpenAI API key](https://platform.openai.com/account/api-keys)
 
+### API Key Setup From Terminal (Mac/Linux/Windows)
+
+Use terminal variables so keys are not hardcoded in files.
+
+#### macOS / Linux (bash/zsh)
+
+```bash
+export OPENAI_API_KEY="your_openai_key"
+export API_KEY="your_app_api_key"
+```
+
+Persist across new terminals:
+
+```bash
+echo 'export OPENAI_API_KEY="your_openai_key"' >> ~/.zshrc
+echo 'export API_KEY="your_app_api_key"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+#### Windows PowerShell
+
+```powershell
+$env:OPENAI_API_KEY="your_openai_key"
+$env:API_KEY="your_app_api_key"
+```
+
+Persist for future sessions:
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY","your_openai_key","User")
+[System.Environment]::SetEnvironmentVariable("API_KEY","your_app_api_key","User")
+```
+
+#### Windows CMD
+
+```cmd
+set OPENAI_API_KEY=your_openai_key
+set API_KEY=your_app_api_key
+```
+
+Persist for future sessions:
+
+```cmd
+setx OPENAI_API_KEY "your_openai_key"
+setx API_KEY "your_app_api_key"
+```
+
+Verify in terminal:
+
+```bash
+echo $OPENAI_API_KEY
+echo $API_KEY
+```
+
 ---
 
 ## Quick Start (Local)
