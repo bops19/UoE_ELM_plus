@@ -7,7 +7,7 @@ try:
 except Exception:
     load_dotenv = None
 
-BASE_DIR = os.path.dirname(__file__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if load_dotenv:
     load_dotenv(os.path.join(BASE_DIR, ".env"))
 
