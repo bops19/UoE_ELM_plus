@@ -45,7 +45,9 @@ def index():
 
 def angular_app_entry(subpath: str = ""):
     normalized_subpath = (subpath or "").strip().lstrip("/")
-    if not os.path.isdir(ANGULAR_STATIC_DIR):
+    _dir_exists = os.path.isdir(ANGULAR_STATIC_DIR)
+    print(f"[DEBUG] angular_app_entry: ANGULAR_STATIC_DIR={ANGULAR_STATIC_DIR!r} isdir={_dir_exists}", flush=True)
+    if not _dir_exists:
         return _error_response(
             f"Angular frontend build not found at: {ANGULAR_STATIC_DIR}. Run npm install && npm run build in /frontend.",
             503,
