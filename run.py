@@ -1,5 +1,14 @@
 """Entry point — run with: python run.py"""
 import os
+import sys
+
+# Ensure emoji in log output doesn't crash Windows terminals
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from app import app, log, _NOFILE_LIMIT_STATUS
 
 if __name__ == "__main__":
@@ -28,7 +37,7 @@ if __name__ == "__main__":
     app.run(
         port=9595,
         debug=False,
-        threaded=False,
+        threaded=True,
         use_reloader=False,
         use_debugger=False,
     )
