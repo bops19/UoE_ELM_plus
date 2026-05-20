@@ -1,6 +1,11 @@
 from typing import Any
+from model_catalog import USE_CASES
 
-PROMPT_SETUP_USE_CASES = {"general", "reasoning", "deep", "voice", "audio"}
+PROMPT_SETUP_USE_CASES = {
+    str(uc.get("key") or "").strip()
+    for uc in USE_CASES
+    if uc.get("promptSetup")
+}
 
 
 def normalize_session_text(value: Any) -> str:
@@ -99,18 +104,20 @@ def normalize_session_update(
 
     use_case = normalize_use_case(requested_use_case, allowed_use_cases, fallback=existing_use_case or "general")
 
+    existing_title = str(existing["title"] or "") if existing else ""
+
     if use_case_supports_prompt_setup(use_case):
         prompt_text = normalize_session_text(requested_prompt) if requested_prompt is not None else normalize_session_text(existing_prompt)
         context_text = normalize_session_text(requested_context) if requested_context is not None else normalize_session_text(existing_context)
         raw_preset_id = requested_prompt_preset_id if requested_prompt_preset_id is not None else existing_preset_id
-        prompt_preset_id = resolve_prompt_preset_id(raw_preset_id, presets)
+        prompt_preset_id = resolve_prompt_preset_id(raw_preset_id, presets) if presets else (str(raw_preset_id or "").strip())
     else:
         prompt_text = ""
         context_text = ""
         prompt_preset_id = ""
 
     return {
-        "title": requested_title or "New chat",
+        "title": requested_title or existing_title or "New chat",
         "useCase": use_case,
         "prompt": prompt_text,
         "context": context_text,

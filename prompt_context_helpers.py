@@ -250,11 +250,13 @@ def prepare_context(
     summary_text = (session_row["summary"] or "") if session_row else ""
     summary_message_id = session_row["summary_message_id"] if session_row else None
     session_use_case = normalize_use_case((session_row["use_case"] or "") if session_row else "", use_case_keys())
+    print(f"[DEBUG CONTEXT] session={session_id[:8]} use_case={session_use_case!r} supports_prompt={use_case_supports_prompt_setup(session_use_case)} preset_id={((session_row['prompt_preset_id'] or '') if session_row else '')!r}", flush=True)
     if use_case_supports_prompt_setup(session_use_case):
         custom_prompt = (session_row["custom_prompt"] or "") if session_row else ""
         custom_context = (session_row["custom_context"] or "") if session_row else ""
         prompt_preset_id = (session_row["prompt_preset_id"] or "") if session_row else ""
         preset = find_prompt_preset(prompt_presets_file, prompt_preset_id)
+        print(f"[DEBUG CONTEXT] preset_id={prompt_preset_id!r} preset_found={preset is not None}", flush=True)
         preset_name = (preset or {}).get("name", "")
         preset_instructions = (preset or {}).get("instructions", "")
         preset_context = (preset or {}).get("context", "")

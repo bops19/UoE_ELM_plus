@@ -217,6 +217,7 @@ def update_session(session_id):
             allowed_use_cases=use_case_keys(),
             presets=presets,
         )
+        print(f"[DEBUG PATCH] useCase={normalized['useCase']} presetId={normalized['promptPresetId']!r} prompt={normalized['prompt']!r} presetsLoaded={len(presets)}", flush=True)
         ensure_session(conn, session_id, normalized["useCase"])
         conn.execute(
             """

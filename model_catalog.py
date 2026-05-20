@@ -5,14 +5,14 @@ DEFAULTS = {
 }
 
 USE_CASES = [
-    {"label": "Chat & reasoning", "key": "general"},
-    {"label": "Pure reasoning", "key": "reasoning"},
-    {"label": "Coding", "key": "coding"},
+    {"label": "Chat & reasoning", "key": "general", "promptSetup": True},
+    {"label": "Pure reasoning", "key": "reasoning", "promptSetup": True},
+    {"label": "Coding", "key": "coding", "promptSetup": True},
     {"label": "Search", "key": "search"},
-    {"label": "Deep research", "key": "deep"},
+    {"label": "Deep research", "key": "deep", "promptSetup": True},
     {"label": "Computer agents", "key": "computer"},
-    {"label": "Voice & audio", "key": "voice"},
-    {"label": "Audio chat", "key": "audio"},
+    {"label": "Voice & audio", "key": "voice", "promptSetup": True},
+    {"label": "Audio chat", "key": "audio", "promptSetup": True},
     {"label": "Transcription", "key": "transcription"},
     {"label": "Text-to-speech", "key": "tts"},
     {"label": "Image generation", "key": "image"},
@@ -30,7 +30,7 @@ TIERS = [
 MODEL_MAP = {
     "general": {
         "premium": ["gpt-5.5-pro", "gpt-5.4-pro", "gpt-5.2-pro", "gpt-5-pro"],
-        "standard": ["gpt-5.5", "gpt-5.4", "gpt-5.3-chat-latest", "gpt-5.2", "gpt-5.1", "gpt-5"],
+        "standard": ["gpt-5.5", "gpt-5.4", "gpt-5.2", "gpt-5.1", "gpt-5"],
         "budget": ["gpt-5.4-mini", "gpt-5-mini"],
         "cheapest": ["gpt-5.4-nano", "gpt-5-nano", "gpt-4.1-nano", "gpt-4-turbo", "gpt-3.5-turbo"],
     },

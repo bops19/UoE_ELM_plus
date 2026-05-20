@@ -27,23 +27,26 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.12, Flask, SQLite, Gunicorn |
-| Frontend | Angular 21, TypeScript, RxJS |
+| Backend | Python 3.12, Flask, SQLite |
+| Frontend | Pre-built Angular 21 (served from `static/ng/`) |
 | AI | OpenAI API (Chat, Responses, Realtime, Images, Embeddings) |
 | Automation | Playwright (Chromium) |
-| Infra | Docker, GitHub Actions |
+| Infra | GitHub Actions |
 
 ---
 
 ## Prerequisites
 
 - Python 3.12+
-- Node.js 22 (LTS) — for frontend development
 - An [OpenAI API key](https://platform.openai.com/account/api-keys)
+
+> Node.js is **not required** — the frontend is pre-built and included in `static/ng/`.
 
 ---
 
-## Quick Start (Local)
+## Quick Start
+
+### macOS / Linux
 
 ```bash
 # 1. Clone and enter the repo
@@ -51,48 +54,53 @@ git clone <repo-url>
 cd <repo-folder>
 
 # 2. Create a virtual environment
-python -m venv venv
-source venv/bin/activate        # Mac/Linux
-venv\Scripts\activate           # Windows
+python3 -m venv venv
+source venv/bin/activate
 
-# 3. Install Python dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY and API_KEY
+# Edit .env and set OPENAI_API_KEY
 
 # 5. Start the server
+python3 run.py
+```
+
+### Windows
+
+```bat
+:: 1. Clone and enter the repo
+git clone <repo-url>
+cd <repo-folder>
+
+:: 2. Create a virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+:: 3. Install dependencies
+pip install -r requirements.txt
+
+:: 4. Configure environment
+copy .env.example .env
+:: Edit .env and set OPENAI_API_KEY
+
+:: 5. Start the server
 python run.py
 ```
 
 Open **http://localhost:9595** in your browser.
 
-### Frontend development (optional)
-
-If you want to run the Angular dev server or rebuild the frontend:
-
-```bash
-cd frontend
-npm install
-npm run build        # production build → output to static/ng/
-npm start            # dev server at http://localhost:4200
-```
-
 ---
 
-## Docker
+## Computer Use (optional)
+
+The computer use tab requires Playwright browsers. Run once after installing dependencies:
 
 ```bash
-# Build and run (builds frontend automatically)
-docker compose up --build
-
-# Or build the image directly
-docker build -t elmplus .
-docker run -p 5000:5000 --env-file .env elmplus
+playwright install chromium
 ```
-
-The container runs on port **5000**.
 
 ---
 
@@ -135,15 +143,11 @@ runtime/
 ```
 .
 ├── app.py                  # Flask app factory + route wiring
+├── run.py                  # Entry point
 ├── handlers/               # Request handlers (chat, voice, image, …)
 ├── routes/                 # Flask blueprints
-├── frontend/               # Angular 21 workspace
-│   └── src/app/
-│       ├── core/           # API client, interceptors
-│       └── pages/          # Shell page and feature components
-├── tests/                  # Backend test suite
-├── Dockerfile
-└── docker-compose.yml
+├── static/ng/              # Pre-built Angular frontend (served by Flask)
+└── tests/                  # Backend test suite
 ```
 
 ---
@@ -151,13 +155,7 @@ runtime/
 ## Running Tests
 
 ```bash
-# Backend
 python -m pytest tests/ -v
-
-# Frontend
-cd frontend
-npm run test
-npm run e2e        # Playwright end-to-end
 ```
 
 ---
