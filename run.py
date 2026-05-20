@@ -10,6 +10,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         pass
 
 from app import app, log, _NOFILE_LIMIT_STATUS
+from config import ANGULAR_STATIC_DIR
 
 if __name__ == "__main__":
     os.environ["FLASK_DEBUG"] = "0"
@@ -19,6 +20,7 @@ if __name__ == "__main__":
     print("╚══════════════════════════════════════════╝")
     print()
     log("✅", "API KEY    ", "Loaded")
+    log("📁", "STATIC DIR ", ANGULAR_STATIC_DIR)
     if _NOFILE_LIMIT_STATUS.get("error"):
         log("⚠️ ", "NOFILE     ", f"startup guard failed: {_NOFILE_LIMIT_STATUS['error']}")
     elif _NOFILE_LIMIT_STATUS.get("supported"):
