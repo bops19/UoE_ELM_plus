@@ -1,0 +1,17 @@
+# Optional Marker fallback installer.
+#
+# Marker is not included in the main app requirements because its current
+# dependency metadata conflicts with the app's pinned environment:
+# - marker-pdf 1.10.2 requires openai<2.0.0
+# - marker-pdf 1.10.2 requires Pillow<11.0.0
+#
+# The webapp can still use Marker as a fallback if the `marker_single` CLI is
+# available on the machine. Install it separately if you want that fallback.
+#
+# Typical usage:
+#   python -m venv .venv-marker
+#   .venv-marker/bin/pip install -r requirements-pdf-marker.txt
+#
+# Then make sure `marker_single` is available on PATH for the webapp process.
+
+marker-pdf==1.10.2

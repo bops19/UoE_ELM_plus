@@ -104,7 +104,7 @@ tesseract --version
 For higher-quality PDF to Markdown conversion with better math extraction on Python 3.14:
 
 ```bash
-pip install pix2text marker-pdf pix2tex
+pip install -r requirements-pdf-enhanced.txt
 ```
 
 Recommended provider order:
@@ -120,6 +120,40 @@ $env:PDF_MARKDOWN_PROVIDERS="pix2text,marker"
 ```
 
 These tools may download model files on first run.
+
+### Optional Marker Fallback
+
+`Marker` is supported by the webapp as a fallback provider, but it is **not**
+included in the main app environment because its current package metadata
+conflicts with this project's pinned dependencies.
+
+Current conflict:
+
+- `marker-pdf==1.10.2` requires `openai<2.0.0`
+- `marker-pdf==1.10.2` requires `Pillow<11.0.0`
+- this app pins `openai==2.33.0` and `pillow==12.2.0`
+
+If you want `Marker` fallback support, install it separately and make
+`marker_single` available on your system `PATH`:
+
+#### macOS / Linux
+
+```bash
+python3 -m venv .venv-marker
+source .venv-marker/bin/activate
+pip install -r requirements-pdf-marker.txt
+```
+
+#### Windows
+
+```powershell
+py -3.14 -m venv .venv-marker
+.venv-marker\Scripts\activate
+pip install -r requirements-pdf-marker.txt
+```
+
+The webapp will use `Marker` automatically if `marker_single` is available and
+`PDF_MARKDOWN_PROVIDERS` includes `marker`.
 
 ---
 
