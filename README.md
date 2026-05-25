@@ -41,6 +41,7 @@ A self-hosted web application for AI-assisted conversations with support for voi
 - An [OpenAI API key](https://platform.openai.com/account/api-keys)
 
 > Node.js is **not required** — the frontend is pre-built and included in `static/ng/`.
+> On Windows, use **Python 3.12** for the most reliable install experience. Newer versions such as Python 3.14 can fail on native wheel/build dependencies used by the PDF OCR and equation pipeline.
 
 ### Tesseract OCR
 
