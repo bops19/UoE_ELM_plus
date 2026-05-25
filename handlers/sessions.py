@@ -4,8 +4,9 @@ import json
 import os
 import shutil
 import uuid
+from pathlib import Path
 
-from flask import Response, request
+from flask import Response, request, send_file
 
 from export_service import (
     export_mime_type,
@@ -33,6 +34,7 @@ from session_store import (
 )
 from usage_history import build_usage_history_payload, model_usage_breakdown
 from vm_service import build_session_view
+from pdf_to_markdown_service import convert_pdf_to_markdown
 
 from handler_dependencies import (
     ATTACHMENTS_DIR,
@@ -217,7 +219,6 @@ def update_session(session_id):
             allowed_use_cases=use_case_keys(),
             presets=presets,
         )
-        print(f"[DEBUG PATCH] useCase={normalized['useCase']} presetId={normalized['promptPresetId']!r} prompt={normalized['prompt']!r} presetsLoaded={len(presets)}", flush=True)
         ensure_session(conn, session_id, normalized["useCase"])
         conn.execute(
             """
@@ -396,6 +397,135 @@ def upload_attachments(session_id):
         detail = session_detail(conn, session_id, load_prompt_presets=lambda: load_prompt_presets(PROMPT_PRESETS_FILE))
 
     return {"session": detail, "sessionView": build_session_view(detail)}
+
+
+def _create_markdown_attachment_from_row(conn, session_id: str, row) -> str:
+    name = str(row["name"] or "")
+    local_path = str(row["local_path"] or "")
+    markdown_text = convert_pdf_to_markdown(Path(local_path), force_mode="auto", ocr_lang="eng")
+    markdown_id = uuid.uuid4().hex
+    markdown_name = f"{os.path.splitext(name)[0]}.md"
+    safe_name = os.path.basename(markdown_name) or "document.md"
+    session_dir = os.path.join(ATTACHMENTS_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+    markdown_path = os.path.join(session_dir, f"{markdown_id}_{safe_name}")
+    with open(markdown_path, "w", encoding="utf-8") as md_file:
+        md_file.write(markdown_text)
+
+    timestamp = _now_ms()
+    conn.execute(
+        """
+        INSERT INTO attachments
+          (id, session_id, name, mime_type, local_path, extracted_text, size_bytes, active, availability, extraction_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            markdown_id,
+            session_id,
+            safe_name,
+            "text/markdown",
+            markdown_path,
+            markdown_text,
+            len(markdown_text.encode("utf-8")),
+            1,
+            "ready",
+            "extracted",
+            timestamp,
+            timestamp,
+        ),
+    )
+    return markdown_id
+
+
+def create_markdown_attachment(session_id):
+    data, err = _validated_json_body(
+        allowed_keys={"attachmentId", "attachmentIds", "useCase"},
+    )
+    if err:
+        return err
+    attachment_id = str(data.get("attachmentId") or "").strip()
+    attachment_ids = data.get("attachmentIds")
+    ids: list[str] = []
+    if isinstance(attachment_ids, list):
+        ids = [str(item or "").strip() for item in attachment_ids if str(item or "").strip()]
+    if not ids and attachment_id:
+        ids = [attachment_id]
+    use_case = str(data.get("useCase") or "general").strip() or "general"
+    if not ids:
+        return _error_response("attachmentId or attachmentIds is required", 400, "attachment_id_required")
+
+    with _db() as conn:
+        ensure_session(conn, session_id, use_case)
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"""
+            SELECT id, name, mime_type, local_path
+            FROM attachments
+            WHERE session_id = ? AND id IN ({placeholders})
+            """,
+            (session_id, *ids),
+        ).fetchall()
+        if not rows:
+            return _error_response("attachment not found", 404, "attachment_not_found")
+        by_id = {str(row["id"]): row for row in rows}
+        ordered_rows = [by_id[attachment_id] for attachment_id in ids if attachment_id in by_id]
+        if not ordered_rows:
+            return _error_response("attachment not found", 404, "attachment_not_found")
+
+        created_count = 0
+        failures: list[dict] = []
+        for row in ordered_rows:
+            row_id = str(row["id"] or "")
+            name = str(row["name"] or "")
+            mime_type = str(row["mime_type"] or "").lower()
+            local_path = str(row["local_path"] or "")
+            if (not name.lower().endswith(".pdf") and mime_type != "application/pdf"):
+                failures.append({"attachmentId": row_id, "name": name, "error": "not_pdf"})
+                continue
+            if not local_path or not os.path.exists(local_path):
+                failures.append({"attachmentId": row_id, "name": name, "error": "missing_file"})
+                continue
+            try:
+                _create_markdown_attachment_from_row(conn, session_id, row)
+                created_count += 1
+            except Exception as exc:
+                failures.append({"attachmentId": row_id, "name": name, "error": str(exc)})
+        conn.execute(
+            "UPDATE sessions SET updated_at = ? WHERE id = ?",
+            (_now_ms(), session_id),
+        )
+        conn.commit()
+        detail = session_detail(conn, session_id, load_prompt_presets=lambda: load_prompt_presets(PROMPT_PRESETS_FILE))
+    return {
+        "session": detail,
+        "sessionView": build_session_view(detail),
+        "createdCount": created_count,
+        "requestedCount": len(ids),
+        "failures": failures,
+    }
+
+
+def download_attachment(session_id, attachment_id):
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT name, mime_type, local_path
+            FROM attachments
+            WHERE session_id = ? AND id = ?
+            """,
+            (session_id, attachment_id),
+        ).fetchone()
+    if not row:
+        return _error_response("attachment not found", 404, "attachment_not_found")
+    local_path = str(row["local_path"] or "")
+    if not local_path or not os.path.exists(local_path):
+        return _error_response("attachment file missing", 404, "attachment_missing_file")
+    return send_file(
+        local_path,
+        as_attachment=True,
+        download_name=str(row["name"] or "attachment.bin"),
+        mimetype=str(row["mime_type"] or "application/octet-stream"),
+    )
 
 
 def update_attachment(session_id, attachment_id):

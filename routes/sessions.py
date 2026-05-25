@@ -60,3 +60,12 @@ def update_attachment_route(session_id: str, attachment_id: str):
 def delete_attachment_route(session_id: str, attachment_id: str):
     return get_route_handler("delete_attachment")(session_id, attachment_id)
 
+
+@sessions_bp.route("/sessions/<session_id>/attachments/<attachment_id>/download", methods=["GET"])
+def download_attachment_route(session_id: str, attachment_id: str):
+    return get_route_handler("download_attachment")(session_id, attachment_id)
+
+
+@sessions_bp.route("/sessions/<session_id>/attachments/markdown", methods=["POST"])
+def create_markdown_attachment_route(session_id: str):
+    return get_route_handler("create_markdown_attachment")(session_id)

@@ -1845,7 +1845,9 @@ from handlers.embedding import embed, embed_index, embed_search
 from handlers.sessions import (
     archive_session,
     clear_session,
+    create_markdown_attachment,
     create_prompt_preset,
+    download_attachment,
     delete_attachment,
     delete_prompt_preset,
     delete_session,
@@ -1944,6 +1946,8 @@ register_route_handlers(
     clear_session=clear_session,
     archive_session=archive_session,
     upload_attachments=upload_attachments,
+    create_markdown_attachment=create_markdown_attachment,
+    download_attachment=download_attachment,
     update_attachment=update_attachment,
     delete_attachment=delete_attachment,
     bootstrap_voice_session=bootstrap_voice_session,
