@@ -42,6 +42,7 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 > Node.js is **not required** — the frontend is pre-built and included in `static/ng/`.
 > On Windows, use **Python 3.12** for the most reliable install experience. Newer versions such as Python 3.14 can fail on native wheel/build dependencies used by the PDF OCR and equation pipeline.
+> You can keep both **Python 3.12** and **Python 3.14** installed on the same machine. On Windows, install Python 3.12 separately and use it for this project with `py -3.12`.
 
 ### Tesseract OCR
 
