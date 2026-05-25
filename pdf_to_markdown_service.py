@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib.util
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from pypdf import PdfReader
 
@@ -22,10 +22,78 @@ def _module_available(name: str) -> bool:
 
 def clean_text_for_markdown(text: str) -> str:
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = _repair_fraction_line_breaks(text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = text.strip()
     return (text + "\n") if text else ""
+
+
+def _looks_math_expression(text: str) -> bool:
+    if not text:
+        return False
+    sample = text.strip()
+    if not sample:
+        return False
+    math_chars = sum(1 for ch in sample if ch in "0123456789+-=*/^()[]{}\\_.,")
+    return (math_chars / max(1, len(sample))) >= 0.35
+
+
+def _repair_fraction_line_breaks(text: str) -> str:
+    """Repair OCR/PDF line-broken fractions into \\frac{...}{...} form."""
+    lines = (text or "").splitlines()
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        cur = lines[i].strip()
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        nxt2 = lines[i + 2].strip() if i + 2 < len(lines) else ""
+
+        # Pattern: numerator, horizontal bar, denominator
+        if (
+            cur
+            and nxt
+            and nxt2
+            and len(cur) <= 120
+            and len(nxt2) <= 120
+            and re.fullmatch(r"[-_=~]{2,}", nxt) is not None
+            and _looks_math_expression(cur)
+            and _looks_math_expression(nxt2)
+        ):
+            out.append(rf"\frac{{{cur}}}{{{nxt2}}}")
+            i += 3
+            continue
+
+        # Pattern: numerator, "/", denominator
+        if (
+            cur
+            and nxt == "/"
+            and nxt2
+            and len(cur) <= 120
+            and len(nxt2) <= 120
+            and _looks_math_expression(cur)
+            and _looks_math_expression(nxt2)
+        ):
+            out.append(rf"\frac{{{cur}}}{{{nxt2}}}")
+            i += 3
+            continue
+
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
+def _text_quality_score(text: str) -> float:
+    normalized = (text or "").strip()
+    if not normalized:
+        return 0.0
+    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    if not lines:
+        return 0.0
+    chars = len(normalized)
+    bad_glyphs = normalized.count("�")
+    short_fragments = sum(1 for line in lines if len(line) <= 2)
+    return chars - (bad_glyphs * 12) - (short_fragments * 2.5)
 
 
 def detect_scanned_pdf(
@@ -87,7 +155,11 @@ def extract_scanned_markdown_with_ocr(pdf_path: Path, ocr_lang: str = "eng") -> 
             mat = fitz.Matrix(2.0, 2.0)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text = (pytesseract.image_to_string(img, lang=ocr_lang) or "").strip()
+            text = (pytesseract.image_to_string(
+                img,
+                lang=ocr_lang,
+                config="--oem 3 --psm 6",
+            ) or "").strip()
             if text:
                 chunks.append(f"\n## Page {i + 1}\n\n{text}\n")
     if not chunks:
@@ -112,12 +184,40 @@ def convert_pdf_to_markdown(
     if mode == "scanned":
         return extract_scanned_markdown_with_ocr(pdf_path, ocr_lang=ocr_lang)
 
-    scanned = detect_scanned_pdf(pdf_path)
-    if scanned:
-        try:
-            return extract_scanned_markdown_with_ocr(pdf_path, ocr_lang=ocr_lang)
-        except Exception:
-            # Graceful fallback for environments without OCR tooling.
-            return extract_born_digital_markdown(pdf_path)
-    return extract_born_digital_markdown(pdf_path)
+    scanned_hint = detect_scanned_pdf(pdf_path)
+    digital_md: Optional[str] = None
+    ocr_md: Optional[str] = None
+    digital_error: Optional[Exception] = None
+    ocr_error: Optional[Exception] = None
 
+    try:
+        digital_md = extract_born_digital_markdown(pdf_path)
+    except Exception as exc:
+        digital_error = exc
+
+    digital_score = _text_quality_score(digital_md or "")
+    digital_weak = digital_score < 180.0
+
+    # If scan is likely (or digital extraction looks poor), OCR should be attempted.
+    if scanned_hint or digital_weak or digital_md is None:
+        try:
+            ocr_md = extract_scanned_markdown_with_ocr(pdf_path, ocr_lang=ocr_lang)
+        except Exception as exc:
+            ocr_error = exc
+
+    if ocr_md and digital_md:
+        ocr_score = _text_quality_score(ocr_md)
+        # Prefer OCR when its quality is materially better or scan is hinted.
+        if scanned_hint or ocr_score > (digital_score * 1.05):
+            return ocr_md
+        return digital_md
+    if ocr_md:
+        return ocr_md
+    if digital_md:
+        return digital_md
+
+    if ocr_error:
+        raise RuntimeError(f"Both digital and OCR extraction failed. OCR error: {ocr_error}") from ocr_error
+    if digital_error:
+        raise RuntimeError(f"Digital extraction failed: {digital_error}") from digital_error
+    raise RuntimeError("PDF extraction failed for unknown reasons.")
