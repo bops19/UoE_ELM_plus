@@ -111,11 +111,14 @@ source venv/bin/activate
 # 4. Install dependencies
 pip install -r requirements.txt
 
-# 5. Configure environment
-cp .env.example .env
-# Edit .env and set OPENAI_API_KEY
+# 5. Set your OpenAI API key
+export OPENAI_API_KEY="your_api_key"
 
-# 6. Start the server
+# 6. Configure environment
+cp .env.example .env
+# Edit .env if you want to persist additional settings
+
+# 7. Start the server
 python3 run.py
 ```
 
@@ -142,12 +145,21 @@ venv\Scripts\activate
 :: 4. Install dependencies
 pip install -r requirements.txt
 
-:: 5. Configure environment
-copy .env.example .env
-:: Edit .env and set OPENAI_API_KEY
+:: 5. Set your OpenAI API key in PowerShell
+powershell -Command "$env:OPENAI_API_KEY='your_api_key'"
 
-:: 6. Start the server
+:: 6. Configure environment
+copy .env.example .env
+:: Edit .env if you want to persist additional settings
+
+:: 7. Start the server
 python run.py
+```
+
+If you are already in PowerShell, you can set the key directly with:
+
+```powershell
+$env:OPENAI_API_KEY="your_api_key"
 ```
 
 Open **http://localhost:9595** in your browser.
