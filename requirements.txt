@@ -50,13 +50,7 @@ markupsafe==3.0.3
 openai==2.33.0
     # via -r requirements.in
 packaging==26.2
-    # via
-    #   gunicorn
-    #   pytesseract
-pillow==12.2.0
-    # via
-    #   -r requirements.in
-    #   pytesseract
+    # via gunicorn
 playwright==1.59.0
     # via -r requirements.in
 pydantic==2.13.3
@@ -68,8 +62,6 @@ pyee==13.0.1
 pymupdf==1.26.5
     # via -r requirements.in
 pypdf==6.10.2
-    # via -r requirements.in
-pytesseract==0.3.13
     # via -r requirements.in
 python-dotenv==1.2.2
     # via -r requirements.in

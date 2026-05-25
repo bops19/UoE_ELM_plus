@@ -341,31 +341,6 @@ def extract_born_digital_markdown(pdf_path: Path) -> str:
     return clean_text_for_markdown("\n".join(chunks))
 
 
-def extract_scanned_markdown_with_ocr(pdf_path: Path, ocr_lang: str = "eng") -> str:
-    fitz = _import_pymupdf()
-    if fitz is None:
-        raise RuntimeError("PyMuPDF is required for OCR extraction.")
-    if not _module_available("pytesseract") or not _module_available("PIL"):
-        raise RuntimeError("OCR dependencies missing: pip install pytesseract pillow")
-
-    import pytesseract  # type: ignore
-    from PIL import Image  # type: ignore
-
-    chunks: List[str] = []
-    with fitz.open(str(pdf_path)) as doc:
-        for index, page in enumerate(doc):
-            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
-            image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text = (pytesseract.image_to_string(image, lang=ocr_lang) or "").strip()
-            if not text:
-                continue
-            chunks.append(f"\n## Page {index + 1}\n\n{text}\n")
-
-    if not chunks:
-        raise ValueError("OCR produced no text.")
-    return clean_text_for_markdown("\n".join(chunks))
-
-
 def _iter_provider_chain() -> Iterable[str]:
     configured = (os.environ.get("PDF_MARKDOWN_PROVIDERS") or "").strip()
     if configured:
@@ -498,8 +473,9 @@ def convert_pdf_to_markdown_bundle(
     scanned = detect_scanned_pdf(pdf_path) if mode == "auto" else (mode == "scanned")
 
     errors: list[str] = []
+    provider_chain = tuple(_iter_provider_chain())
     if mode == "auto":
-        for provider in _iter_provider_chain():
+        for provider in provider_chain:
             provider_dir = work_dir / provider
             try:
                 bundle = _convert_with_provider(provider, pdf_path, provider_dir)
@@ -518,18 +494,27 @@ def convert_pdf_to_markdown_bundle(
         bundle.markdown_text = _repair_equations(bundle.markdown_text, pdf_path, work_dir)
         return bundle
     else:
-        bundle = ConversionBundle(
-            markdown_text=extract_scanned_markdown_with_ocr(pdf_path, ocr_lang=ocr_lang),
-            provider="local-ocr",
-            scanned=True,
-            output_dir=work_dir,
+        for provider in provider_chain:
+            provider_dir = work_dir / provider
+            try:
+                bundle = _convert_with_provider(provider, pdf_path, provider_dir)
+                bundle.scanned = True
+                bundle.markdown_text = _repair_equations(bundle.markdown_text, pdf_path, work_dir)
+                return bundle
+            except Exception as exc:
+                errors.append(f"{provider}: {exc}")
+        joined = ", ".join(errors) if errors else "no providers configured"
+        raise RuntimeError(
+            "Scanned PDF conversion requires Pix2Text or Marker. "
+            f"Provider attempts: {joined}"
         )
-        bundle.markdown_text = _repair_equations(bundle.markdown_text, pdf_path, work_dir)
-        return bundle
 
     if scanned:
-        markdown_text = extract_scanned_markdown_with_ocr(pdf_path, ocr_lang=ocr_lang)
-        provider = "local-ocr"
+        joined = ", ".join(errors) if errors else "no providers configured"
+        raise RuntimeError(
+            "Scanned PDF conversion requires Pix2Text or Marker. "
+            f"Provider attempts: {joined}"
+        )
     else:
         markdown_text = extract_born_digital_markdown(pdf_path)
         provider = "local-digital"

@@ -43,9 +43,8 @@ A self-hosted web application for AI-assisted conversations with support for voi
 > Node.js is **not required** — the frontend is pre-built and included in `static/ng/`.
 > This project is pinned for **Python 3.14**.
 
-### Tesseract OCR
+### PDF Conversion
 
-Tesseract is required for scanned PDF to Markdown conversion.
 The app supports two conversion paths:
 
 - enhanced path:
@@ -54,50 +53,11 @@ The app supports two conversion paths:
   - targeted equation repair with `Pix2Text` or `pix2tex`
 - local fallback path:
   - born-digital PDFs: direct text extraction with PyMuPDF
-  - scanned PDFs: Tesseract OCR
 
-`Pix2Text` and `Marker` are optional. If they are not installed, the app falls back to the local pipeline automatically.
+`Pix2Text` and `Marker` are optional for digital PDFs. If they are not installed,
+the app falls back to the local PyMuPDF text extraction path automatically.
 
-#### macOS
-
-```bash
-brew install tesseract
-```
-
-#### Linux
-
-Ubuntu / Debian:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y tesseract-ocr
-```
-
-Fedora:
-
-```bash
-sudo dnf install -y tesseract
-```
-
-#### Windows
-
-Using `winget`:
-
-```powershell
-winget install --id UB-Mannheim.TesseractOCR -e
-```
-
-Using Chocolatey:
-
-```powershell
-choco install tesseract
-```
-
-After installation, verify it is available:
-
-```bash
-tesseract --version
-```
+For scanned PDFs, install `Pix2Text` or `Marker`. There is no Tesseract fallback anymore.
 
 ### Optional Enhanced PDF Converters
 
@@ -130,8 +90,7 @@ conflicts with this project's pinned dependencies.
 Current conflict:
 
 - `marker-pdf==1.10.2` requires `openai<2.0.0`
-- `marker-pdf==1.10.2` requires `Pillow<11.0.0`
-- this app pins `openai==2.33.0` and `pillow==12.2.0`
+- this app pins `openai==2.33.0`
 
 If you want `Marker` fallback support, install it separately and make
 `marker_single` available on your system `PATH`:
@@ -166,31 +125,22 @@ The webapp will use `Marker` automatically if `marker_single` is available and
 git clone <repo-url>
 cd <repo-folder>
 
-# 2. Install Tesseract OCR
-brew install tesseract
-
-# 3. Create a Python 3.14 virtual environment
+# 2. Create a Python 3.14 virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# 4. Install dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 5. Set your OpenAI API key
+# 4. Set your OpenAI API key
 export OPENAI_API_KEY="your_api_key"
 
-# 6. Configure environment
+# 5. Configure environment
 cp .env.example .env
 # Edit .env if you want to persist additional settings
 
-# 7. Start the server
+# 6. Start the server
 python3 run.py
-```
-
-Linux users can replace the Tesseract step with:
-
-```bash
-sudo apt-get update && sudo apt-get install -y tesseract-ocr
 ```
 
 ### Windows
@@ -200,24 +150,21 @@ sudo apt-get update && sudo apt-get install -y tesseract-ocr
 git clone <repo-url>
 cd <repo-folder>
 
-:: 2. Install Tesseract OCR
-winget install --id UB-Mannheim.TesseractOCR -e
-
-:: 3. Create a Python 3.14 virtual environment
+:: 2. Create a Python 3.14 virtual environment
 py -3.14 -m venv venv
 venv\Scripts\activate
 
-:: 4. Install dependencies
+:: 3. Install dependencies
 pip install -r requirements.txt
 
-:: 5. Set your OpenAI API key in PowerShell
+:: 4. Set your OpenAI API key in PowerShell
 powershell -Command "$env:OPENAI_API_KEY='your_api_key'"
 
-:: 6. Configure environment
+:: 5. Configure environment
 copy .env.example .env
 :: Edit .env if you want to persist additional settings
 
-:: 7. Start the server
+:: 6. Start the server
 python run.py
 ```
 
