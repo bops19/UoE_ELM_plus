@@ -27,7 +27,7 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.12, Flask, SQLite |
+| Backend | Python 3.14, Flask, SQLite |
 | Frontend | Pre-built Angular 21 (served from `static/ng/`) |
 | AI | OpenAI API (Chat, Responses, Realtime, Images, Embeddings) |
 | Automation | Playwright (Chromium) |
@@ -37,12 +37,11 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.14
 - An [OpenAI API key](https://platform.openai.com/account/api-keys)
 
 > Node.js is **not required** — the frontend is pre-built and included in `static/ng/`.
-> On Windows, use **Python 3.12** for the most reliable install experience. Newer versions such as Python 3.14 can fail on native wheel/build dependencies used by the PDF OCR and equation pipeline.
-> You can keep both **Python 3.12** and **Python 3.14** installed on the same machine. On Windows, install Python 3.12 separately and use it for this project with `py -3.12`.
+> This project is pinned for **Python 3.14**.
 
 ### Tesseract OCR
 
@@ -89,6 +88,8 @@ After installation, verify it is available:
 tesseract --version
 ```
 
+For the equation-aware PDF pipeline, keep internet access available for the first run so Nougat can download its model checkpoint into the local cache.
+
 ---
 
 ## Quick Start
@@ -103,7 +104,7 @@ cd <repo-folder>
 # 2. Install Tesseract OCR
 brew install tesseract
 
-# 3. Create a virtual environment
+# 3. Create a Python 3.14 virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
@@ -134,8 +135,8 @@ cd <repo-folder>
 :: 2. Install Tesseract OCR
 winget install --id UB-Mannheim.TesseractOCR -e
 
-:: 3. Create a virtual environment
-python -m venv venv
+:: 3. Create a Python 3.14 virtual environment
+py -3.14 -m venv venv
 venv\Scripts\activate
 
 :: 4. Install dependencies
