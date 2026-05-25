@@ -46,12 +46,17 @@ A self-hosted web application for AI-assisted conversations with support for voi
 ### Tesseract OCR
 
 Tesseract is required for scanned PDF to Markdown conversion.
-The app now uses a lightweight local pipeline:
+The app supports two conversion paths:
 
-- born-digital PDFs: direct text extraction with PyMuPDF
-- scanned PDFs: Tesseract OCR
+- enhanced path:
+  - `Pix2Text` as the primary full-document converter
+  - `Marker` as the optional fallback converter
+  - targeted equation repair with `Pix2Text` or `pix2tex`
+- local fallback path:
+  - born-digital PDFs: direct text extraction with PyMuPDF
+  - scanned PDFs: Tesseract OCR
 
-No Nougat, Marker, or model downloads are required.
+`Pix2Text` and `Marker` are optional. If they are not installed, the app falls back to the local pipeline automatically.
 
 #### macOS
 
@@ -93,6 +98,28 @@ After installation, verify it is available:
 ```bash
 tesseract --version
 ```
+
+### Optional Enhanced PDF Converters
+
+For higher-quality PDF to Markdown conversion with better math extraction on Python 3.14:
+
+```bash
+pip install pix2text marker-pdf pix2tex
+```
+
+Recommended provider order:
+
+```bash
+export PDF_MARKDOWN_PROVIDERS="pix2text,marker"
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:PDF_MARKDOWN_PROVIDERS="pix2text,marker"
+```
+
+These tools may download model files on first run.
 
 ---
 

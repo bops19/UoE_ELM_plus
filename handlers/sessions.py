@@ -34,7 +34,7 @@ from session_store import (
 )
 from usage_history import build_usage_history_payload, model_usage_breakdown
 from vm_service import build_session_view
-from pdf_to_markdown_service import convert_pdf_to_markdown
+from pdf_to_markdown_service import convert_pdf_to_markdown_bundle
 
 from handler_dependencies import (
     ATTACHMENTS_DIR,
@@ -402,13 +402,23 @@ def upload_attachments(session_id):
 def _create_markdown_attachment_from_row(conn, session_id: str, row) -> str:
     name = str(row["name"] or "")
     local_path = str(row["local_path"] or "")
-    markdown_text = convert_pdf_to_markdown(Path(local_path), force_mode="auto", ocr_lang="eng")
     markdown_id = uuid.uuid4().hex
     markdown_name = f"{os.path.splitext(name)[0]}.md"
     safe_name = os.path.basename(markdown_name) or "document.md"
     session_dir = os.path.join(ATTACHMENTS_DIR, session_id)
     os.makedirs(session_dir, exist_ok=True)
-    markdown_path = os.path.join(session_dir, f"{markdown_id}_{safe_name}")
+    bundle_dir = os.path.join(session_dir, f"{markdown_id}_bundle")
+    os.makedirs(bundle_dir, exist_ok=True)
+    bundle = convert_pdf_to_markdown_bundle(
+        Path(local_path),
+        output_dir=Path(bundle_dir),
+        force_mode="auto",
+        ocr_lang="eng",
+    )
+    markdown_text = bundle.markdown_text
+    target_dir = str(bundle.output_dir or Path(bundle_dir))
+    os.makedirs(target_dir, exist_ok=True)
+    markdown_path = os.path.join(target_dir, safe_name)
     with open(markdown_path, "w", encoding="utf-8") as md_file:
         md_file.write(markdown_text)
 
