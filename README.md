@@ -46,6 +46,12 @@ A self-hosted web application for AI-assisted conversations with support for voi
 ### Tesseract OCR
 
 Tesseract is required for scanned PDF to Markdown conversion.
+The app now uses a lightweight local pipeline:
+
+- born-digital PDFs: direct text extraction with PyMuPDF
+- scanned PDFs: Tesseract OCR
+
+No Nougat, Marker, or model downloads are required.
 
 #### macOS
 
@@ -87,8 +93,6 @@ After installation, verify it is available:
 ```bash
 tesseract --version
 ```
-
-For the equation-aware PDF pipeline, keep internet access available for the first run so Nougat can download its model checkpoint into the local cache.
 
 ---
 
