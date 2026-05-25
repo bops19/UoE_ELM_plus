@@ -42,6 +42,51 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 > Node.js is **not required** — the frontend is pre-built and included in `static/ng/`.
 
+### Tesseract OCR
+
+Tesseract is required for scanned PDF to Markdown conversion.
+
+#### macOS
+
+```bash
+brew install tesseract
+```
+
+#### Linux
+
+Ubuntu / Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y tesseract-ocr
+```
+
+Fedora:
+
+```bash
+sudo dnf install -y tesseract
+```
+
+#### Windows
+
+Using `winget`:
+
+```powershell
+winget install --id UB-Mannheim.TesseractOCR -e
+```
+
+Using Chocolatey:
+
+```powershell
+choco install tesseract
+```
+
+After installation, verify it is available:
+
+```bash
+tesseract --version
+```
+
 ---
 
 ## Quick Start
@@ -53,19 +98,28 @@ A self-hosted web application for AI-assisted conversations with support for voi
 git clone <repo-url>
 cd <repo-folder>
 
-# 2. Create a virtual environment
+# 2. Install Tesseract OCR
+brew install tesseract
+
+# 3. Create a virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# 3. Install dependencies
+# 4. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure environment
+# 5. Configure environment
 cp .env.example .env
 # Edit .env and set OPENAI_API_KEY
 
-# 5. Start the server
+# 6. Start the server
 python3 run.py
+```
+
+Linux users can replace the Tesseract step with:
+
+```bash
+sudo apt-get update && sudo apt-get install -y tesseract-ocr
 ```
 
 ### Windows
@@ -75,18 +129,21 @@ python3 run.py
 git clone <repo-url>
 cd <repo-folder>
 
-:: 2. Create a virtual environment
+:: 2. Install Tesseract OCR
+winget install --id UB-Mannheim.TesseractOCR -e
+
+:: 3. Create a virtual environment
 python -m venv venv
 venv\Scripts\activate
 
-:: 3. Install dependencies
+:: 4. Install dependencies
 pip install -r requirements.txt
 
-:: 4. Configure environment
+:: 5. Configure environment
 copy .env.example .env
 :: Edit .env and set OPENAI_API_KEY
 
-:: 5. Start the server
+:: 6. Start the server
 python run.py
 ```
 
