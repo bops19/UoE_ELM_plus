@@ -399,7 +399,7 @@ def upload_attachments(session_id):
     return {"session": detail, "sessionView": build_session_view(detail)}
 
 
-def _create_markdown_attachment_from_row(conn, session_id: str, row) -> str:
+def _create_markdown_attachment_from_row(conn, session_id: str, row, conversion_type: str = "arxiv") -> str:
     name = str(row["name"] or "")
     local_path = str(row["local_path"] or "")
     markdown_id = uuid.uuid4().hex
@@ -412,8 +412,7 @@ def _create_markdown_attachment_from_row(conn, session_id: str, row) -> str:
     bundle = convert_pdf_to_markdown_bundle(
         Path(local_path),
         output_dir=Path(bundle_dir),
-        force_mode="auto",
-        ocr_lang="eng",
+        conversion_type=conversion_type,
     )
     markdown_text = bundle.markdown_text
     target_dir = str(bundle.output_dir or Path(bundle_dir))
@@ -449,7 +448,7 @@ def _create_markdown_attachment_from_row(conn, session_id: str, row) -> str:
 
 def create_markdown_attachment(session_id):
     data, err = _validated_json_body(
-        allowed_keys={"attachmentId", "attachmentIds", "useCase"},
+        allowed_keys={"attachmentId", "attachmentIds", "useCase", "conversionType"},
     )
     if err:
         return err
@@ -461,8 +460,11 @@ def create_markdown_attachment(session_id):
     if not ids and attachment_id:
         ids = [attachment_id]
     use_case = str(data.get("useCase") or "general").strip() or "general"
+    conversion_type = str(data.get("conversionType") or "arxiv").strip().lower() or "arxiv"
     if not ids:
         return _error_response("attachmentId or attachmentIds is required", 400, "attachment_id_required")
+    if conversion_type not in {"arxiv", "ocr"}:
+        return _error_response("conversionType must be arxiv or ocr", 400, "markdown_invalid_conversion_type")
 
     with _db() as conn:
         ensure_session(conn, session_id, use_case)
@@ -496,7 +498,7 @@ def create_markdown_attachment(session_id):
                 failures.append({"attachmentId": row_id, "name": name, "error": "missing_file"})
                 continue
             try:
-                _create_markdown_attachment_from_row(conn, session_id, row)
+                _create_markdown_attachment_from_row(conn, session_id, row, conversion_type=conversion_type)
                 created_count += 1
             except Exception as exc:
                 failures.append({"attachmentId": row_id, "name": name, "error": str(exc)})

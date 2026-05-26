@@ -45,45 +45,21 @@ A self-hosted web application for AI-assisted conversations with support for voi
 
 ### PDF Conversion
 
-The app supports two conversion paths:
+The app supports a Marker-based PDF to Markdown workflow:
 
-- enhanced path:
-  - `Pix2Text` as the primary full-document converter
-  - `Marker` as the optional fallback converter
-  - targeted equation repair with `Pix2Text` or `pix2tex`
-- local fallback path:
-  - born-digital PDFs: direct text extraction with PyMuPDF
+- `ArXiv` mode:
+  - standard Marker conversion
+  - best for born-digital academic PDFs
+- `OCR` mode:
+  - Marker conversion with forced OCR
+  - best for scanned or image-heavy PDFs
 
-`Pix2Text` and `Marker` are optional for digital PDFs. If they are not installed,
-the app falls back to the local PyMuPDF text extraction path automatically.
-
-For scanned PDFs, install `Pix2Text` or `Marker`. There is no Tesseract fallback anymore.
+The `Create Markdown` tool in the webapp exposes these two modes directly from
+the dropdown in the Tools section.
 
 ### Optional Enhanced PDF Converters
 
-For higher-quality PDF to Markdown conversion with better math extraction on Python 3.14:
-
-```bash
-pip install -r requirements-pdf-enhanced.txt
-```
-
-Recommended provider order:
-
-```bash
-export PDF_MARKDOWN_PROVIDERS="pix2text,marker"
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:PDF_MARKDOWN_PROVIDERS="pix2text,marker"
-```
-
-These tools may download model files on first run.
-
-### Optional Marker Fallback
-
-`Marker` is supported by the webapp as a fallback provider, but it is **not**
+`Marker` is used by the webapp for PDF conversion, but it is **not**
 included in the main app environment because its current package metadata
 conflicts with this project's pinned dependencies.
 
@@ -92,7 +68,8 @@ Current conflict:
 - `marker-pdf==1.10.2` requires `openai<2.0.0`
 - this app pins `openai==2.33.0`
 
-If you want `Marker` fallback support, install it separately and make
+If you want PDF-to-Markdown support in the webapp, install `Marker`
+separately and make
 `marker_single` available on your system `PATH`:
 
 #### macOS / Linux
@@ -111,8 +88,7 @@ py -3.14 -m venv .venv-marker
 pip install -r requirements-pdf-marker.txt
 ```
 
-The webapp will use `Marker` automatically if `marker_single` is available and
-`PDF_MARKDOWN_PROVIDERS` includes `marker`.
+The webapp will use `Marker` automatically when `marker_single` is available.
 
 ---
 
