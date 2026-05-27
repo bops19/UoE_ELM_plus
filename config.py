@@ -183,6 +183,7 @@ TEXT_FILE_EXTENSIONS = {
     ".json", ".jsonl", ".yaml", ".yml", ".csv", ".tsv", ".html", ".htm",
     ".xml", ".css", ".scss", ".sql", ".tex", ".log", ".ini", ".cfg",
     ".toml", ".sh", ".zsh",
+    ".m",
 }
 TOOL_HANDOFF_EXTENSIONS = {".fig"}
 
