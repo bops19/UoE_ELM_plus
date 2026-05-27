@@ -8,8 +8,10 @@ Supported conversion types:
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -100,9 +102,22 @@ def _run_marker_cli(pdf_path: Path, output_dir: Path, *, force_ocr: bool) -> Con
         "--disable_multiprocessing",
         "--disable_tqdm",
     ]
+    config_path: Optional[str] = None
     if force_ocr:
-        cmd.append("--force_ocr")
-    completed = _run_command(cmd)
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as config_file:
+            json.dump({"force_ocr": True}, config_file)
+            config_path = config_file.name
+        cmd.extend(["--config_json", config_path])
+    else:
+        cmd.append("--disable_ocr")
+    try:
+        completed = _run_command(cmd)
+    finally:
+        if config_path:
+            try:
+                Path(config_path).unlink(missing_ok=True)
+            except Exception:
+                pass
     if completed.returncode != 0:
         stderr = (completed.stderr or completed.stdout or "").strip()
         raise RuntimeError(f"Marker failed: {stderr}")
@@ -116,15 +131,23 @@ def _run_marker_cli(pdf_path: Path, output_dir: Path, *, force_ocr: bool) -> Con
 
 
 def _run_marker_module(pdf_path: Path, output_dir: Path, *, force_ocr: bool) -> ConversionBundle:
-    from marker.converters.pdf import PdfConverter  # type: ignore
+    converter_cls = None
+    if force_ocr:
+        from marker.converters.ocr import OCRConverter  # type: ignore
+
+        converter_cls = OCRConverter
+    else:
+        from marker.converters.pdf import PdfConverter  # type: ignore
+
+        converter_cls = PdfConverter
     from marker.models import create_model_dict  # type: ignore
     from marker.output import text_from_rendered  # type: ignore
 
     output_dir.mkdir(parents=True, exist_ok=True)
     converter_kwargs = {"artifact_dict": create_model_dict()}
-    if force_ocr:
-        converter_kwargs["config"] = {"force_ocr": True}
-    converter = PdfConverter(**converter_kwargs)
+    if not force_ocr:
+        converter_kwargs["config"] = {"disable_ocr": True}
+    converter = converter_cls(**converter_kwargs)
     rendered = converter(str(pdf_path))
     text, _, images = text_from_rendered(rendered)
     assets_dir = None
