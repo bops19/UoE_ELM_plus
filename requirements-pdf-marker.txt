@@ -1,12 +1,13 @@
-# Optional Marker fallback installer.
+# Marker installer for PDF conversion.
 #
 # Marker is not included in the main app requirements because its current
 # dependency metadata conflicts with the app's pinned environment:
 # - marker-pdf 1.10.2 requires openai<2.0.0
 # - marker-pdf 1.10.2 requires Pillow<11.0.0
 #
-# The webapp can still use Marker as a fallback if the `marker_single` CLI is
-# available on the machine. Install it separately if you want that fallback.
+# The webapp uses Marker for PDF-to-Markdown conversion when the `marker_single`
+# CLI is available on the machine. Install it separately if you want that
+# conversion flow enabled.
 #
 # Typical usage:
 #   python -m venv .venv-marker

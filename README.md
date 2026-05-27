@@ -57,7 +57,7 @@ The app supports a Marker-based PDF to Markdown workflow:
 The `Create Markdown` tool in the webapp exposes these two modes directly from
 the dropdown in the Tools section.
 
-### Optional Enhanced PDF Converters
+### Marker Installation For PDF Conversion
 
 `Marker` is used by the webapp for PDF conversion, but it is **not**
 included in the main app environment because its current package metadata
