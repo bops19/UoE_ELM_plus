@@ -15,6 +15,18 @@ LEGACY_RUNTIME_DIR = os.path.join(BASE_DIR, "runtime")
 LEGACY_DIR = os.path.join(BASE_DIR, "Legacy")
 
 
+def _dir_is_writable(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        test_path = os.path.join(path, ".codex_write_test")
+        with open(test_path, "w", encoding="utf-8") as test_file:
+            test_file.write("ok")
+        os.remove(test_path)
+        return True
+    except Exception:
+        return False
+
+
 def _resolve_angular_static_dir() -> str:
     """
     Resolve Angular build output with a strong preference for static/ng/browser.
@@ -70,7 +82,34 @@ def _user_profile_runtime_dir(app_slug: str = "elmplus") -> str:
     return os.path.join(home_dir, ".local", "share", app_slug, "runtime")
 
 
-RUNTIME_DIR = _user_profile_runtime_dir()
+def _resolve_runtime_dir(app_slug: str = "elmplus") -> str:
+    """
+    Prefer a profile-based runtime directory, but fall back to a repo-local one
+    when the profile path is not writable in the current environment.
+    """
+    env_override = (os.getenv("ELMPLUS_RUNTIME_DIR") or "").strip()
+    if env_override:
+        candidate = os.path.abspath(os.path.expanduser(env_override))
+        if _dir_is_writable(candidate):
+            return candidate
+
+    profile_dir = _user_profile_runtime_dir(app_slug)
+    if _dir_is_writable(profile_dir):
+        return profile_dir
+
+    local_dir = os.path.join(BASE_DIR, "runtime")
+    if _dir_is_writable(local_dir):
+        return local_dir
+
+    temp_dir = os.path.join("/private/tmp", app_slug, "runtime")
+    if _dir_is_writable(temp_dir):
+        return temp_dir
+
+    # Last resort: return the profile path even if writable checks failed.
+    return profile_dir
+
+
+RUNTIME_DIR = _resolve_runtime_dir()
 
 
 def _migrate_legacy_runtime_once(src_dir: str, dst_dir: str):
