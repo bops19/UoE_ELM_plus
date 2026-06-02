@@ -29,6 +29,7 @@ from prompt_session_service import (
 from session_store import (
     assistant_response_ordinal,
     ensure_session,
+    insert_message,
     session_detail,
     session_selected_model,
 )
@@ -514,6 +515,87 @@ def create_markdown_attachment(session_id):
         "createdCount": created_count,
         "requestedCount": len(ids),
         "failures": failures,
+    }
+
+
+def display_attachment(session_id):
+    data, err = _validated_json_body(
+        allowed_keys={"attachmentId", "attachmentIds", "useCase"},
+    )
+    if err:
+        return err
+    attachment_id = str(data.get("attachmentId") or "").strip()
+    attachment_ids = data.get("attachmentIds")
+    ids: list[str] = []
+    if isinstance(attachment_ids, list):
+        ids = [str(item or "").strip() for item in attachment_ids if str(item or "").strip()]
+    if not ids and attachment_id:
+        ids = [attachment_id]
+    use_case = str(data.get("useCase") or "general").strip() or "general"
+    if not ids:
+        return _error_response("attachmentId or attachmentIds is required", 400, "attachment_id_required")
+
+    with _db() as conn:
+        ensure_session(conn, session_id, use_case)
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM attachments
+            WHERE session_id = ? AND id IN ({placeholders})
+            ORDER BY created_at ASC, id ASC
+            """,
+            (session_id, *ids),
+        ).fetchall()
+        if not rows:
+            return _error_response("attachment not found", 404, "attachment_not_found")
+
+        by_id = {str(row["id"]): row for row in rows}
+        ordered_rows = [by_id[attachment_id] for attachment_id in ids if attachment_id in by_id]
+        if not ordered_rows:
+            return _error_response("attachment not found", 404, "attachment_not_found")
+
+        selected = ordered_rows[0]
+        refreshed = _refresh_attachment_extraction_if_possible(conn, selected)
+        name = str(refreshed["name"] or "file")
+        mime_type = str(refreshed["mime_type"] or "").lower()
+        extracted_text = str(refreshed["extracted_text"] or "").strip()
+        if extracted_text:
+            content = f"### {name}\n\n{extracted_text}"
+        elif mime_type.startswith("image/"):
+            content = f"### {name}\n\n[Image display requested. This file is available locally, but text extraction is not available for inline display.]"
+        else:
+            content = f"### {name}\n\n[No readable text could be extracted from this file.]"
+
+        payload = {
+            "display": {
+                "attachmentId": str(refreshed["id"] or ""),
+                "name": name,
+                "mimeType": mime_type,
+                "mode": "display",
+                "source": "local-python",
+            },
+            "control": {
+                "useCase": use_case,
+                "tool": "display",
+            },
+        }
+        insert_message(
+            conn,
+            session_id,
+            "assistant",
+            content,
+            msg_type="text",
+            payload=payload,
+            status="complete",
+        )
+        conn.commit()
+        detail = session_detail(conn, session_id, load_prompt_presets=lambda: load_prompt_presets(PROMPT_PRESETS_FILE))
+    return {
+        "session": detail,
+        "sessionView": build_session_view(detail),
+        "displayedCount": 1,
+        "requestedCount": len(ids),
     }
 
 

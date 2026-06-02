@@ -69,3 +69,8 @@ def download_attachment_route(session_id: str, attachment_id: str):
 @sessions_bp.route("/sessions/<session_id>/attachments/markdown", methods=["POST"])
 def create_markdown_attachment_route(session_id: str):
     return get_route_handler("create_markdown_attachment")(session_id)
+
+
+@sessions_bp.route("/sessions/<session_id>/attachments/display", methods=["POST"])
+def display_attachment_route(session_id: str):
+    return get_route_handler("display_attachment")(session_id)
